@@ -67,13 +67,15 @@ test("webview runtime appends only once", () => {
   assert.match(patched, /codex-message-from-view/);
   assert.match(patched, /__codexForwardedViaBridge/);
   assert.match(patched, /Starting voice/);
-  assert.match(patched, /kokoro-explicit-v3/);
+  assert.match(patched, /kokoro-explicit-v4/);
+  assert.match(patched, /codexLinuxConversationIsSpeaking/);
+  assert.match(patched, /codexLinuxConversationStopSpeaking/);
   assert.match(patched, /speechSynthesis\?\.cancel/);
   assert.match(patched, /action:"speak",source:"button",text/);
   assert.match(patched, /codexLinuxReadAloudSetup/);
   assert.match(patched, /action:"setup",mode/);
   assert.match(patched, /9e5/);
-  assert.match(applyIndexRuntimePatch("globalThis.codexLinuxReadAloudClick=()=>{};"), /kokoro-explicit-v3/);
+  assert.match(applyIndexRuntimePatch("globalThis.codexLinuxReadAloudClick=()=>{};"), /kokoro-explicit-v4/);
   assert.doesNotMatch(patched, /SpeechSynthesisUtterance/);
   assert.doesNotMatch(patched, /browser speech/);
   assert.doesNotMatch(patched, /no-voices/);
@@ -456,7 +458,7 @@ test("general settings patch adds current upstream read aloud toggle", () => {
   assert.match(patched, /min:\.7/);
   assert.match(patched, /max:1\.4/);
   assert.match(patched, /codexLinuxReadAloudSetup/);
-  assert.match(patched, /kokoro-explicit-v3/);
+  assert.match(patched, /kokoro-explicit-v4/);
   assert.match(patched, /globalThis\.codexLinuxReadAloudSetup=setup/);
   assert.doesNotThrow(() => new Function("$", "w", "C", "N", "L", "F", "P", "J", "q", patched));
   assert.match(
@@ -582,7 +584,7 @@ test("settings asset patch upgrades older general settings bundle", () => {
     const patched = fs.readFileSync(asset, "utf8");
     assert.match(patched, /codex-linux-read-aloud-kokoro-speed/);
     assert.match(patched, /Choose folder/);
-    assert.match(patched, /kokoro-explicit-v3/);
+    assert.match(patched, /kokoro-explicit-v4/);
     assert.match(
       patched,
       /children:\[S,C,w,T,\(0,\$\.jsx\)\(codexLinuxReadAloudSettingsRow,\{\}\),D,O,k,A,j,M,N,P,L\]/,
