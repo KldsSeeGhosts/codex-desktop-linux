@@ -46,7 +46,8 @@ CODEX_BOOTSTRAP_CLEANUP_FEATURES=remote-mobile-control,read-aloud make setup-nat
 ```
 
 The helper lists exact paths and deletes only paths confirmed with
-`DELETE <exact path>`.
+`DELETE <exact path>`. Add `CODEX_BOOTSTRAP_DRY_RUN=1` to preview cleanup
+targets without deleting them.
 
 Each feature directory should include:
 

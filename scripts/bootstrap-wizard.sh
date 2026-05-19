@@ -26,7 +26,7 @@ Usage: scripts/bootstrap-wizard.sh [--help]
 
 Environment:
   CODEX_BOOTSTRAP_NONINTERACTIVE=1     never prompt
-  CODEX_BOOTSTRAP_DRY_RUN=1            print install commands without running them
+  CODEX_BOOTSTRAP_DRY_RUN=1            preview install/cleanup actions without changing them
   CODEX_BOOTSTRAP_INSTALL_DEPS=1       run bash scripts/install-deps.sh after checks
   CODEX_BOOTSTRAP_INSTALL_NATIVE=1     run make install-native after checks
   CODEX_BOOTSTRAP_CLEANUP_FEATURES=a,b cleanup feature-owned data with confirmation
@@ -369,18 +369,18 @@ input_group_summary() {
 window_backend_hint() {
     local desktop="${XDG_CURRENT_DESKTOP:-} ${DESKTOP_SESSION:-} ${XDG_SESSION_DESKTOP:-}"
     desktop="${desktop,,}"
-    if [[ "$desktop" == *kde* || "$desktop" == *plasma* ]]; then
-        printf 'KDE/Plasma -> KWin scripting backend'
-    elif [[ "$desktop" == *gnome* ]]; then
-        printf 'GNOME -> Shell Introspect plus optional bundled extension for exact activation'
-    elif [[ "$desktop" == *hyprland* ]]; then
+    if [[ "$desktop" == *hyprland* ]]; then
         printf 'Hyprland -> hyprctl backend'
     elif [[ "$desktop" == *sway* ]]; then
-        printf 'Sway -> i3 IPC backend through swaymsg'
+        printf 'Sway -> not explicitly supported by the current i3 backend; verify with Computer Use doctor after install'
     elif [[ "$desktop" == *i3* ]]; then
         printf 'i3 -> i3 IPC backend'
     elif [[ "$desktop" == *cosmic* ]]; then
         printf 'COSMIC -> bundled COSMIC helper backend'
+    elif [[ "$desktop" == *kde* || "$desktop" == *plasma* ]]; then
+        printf 'KDE/Plasma -> KWin scripting backend'
+    elif [[ "$desktop" == *gnome* ]]; then
+        printf 'GNOME -> Shell Introspect plus optional bundled extension for exact activation'
     else
         printf 'unknown desktop -> screenshots, AT-SPI, and global ydotool may still work'
     fi
@@ -406,7 +406,7 @@ settings_file_path() {
         printf '%s\n' "$CODEX_LINUX_SETTINGS_FILE"
     else
         local config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
-        local app_id="${CODEX_APP_ID:-codex-desktop}"
+        local app_id="${CODEX_LINUX_APP_ID:-${CODEX_APP_ID:-codex-desktop}}"
         case "$app_id" in
             */*|*[!A-Za-z0-9._-]*|"."|".."|"")
                 app_id="codex-desktop"
@@ -454,7 +454,7 @@ read_aloud_model_path() {
         value="$(json_setting_value "codex-linux-read-aloud-kokoro-model")"
     fi
     if [ -z "$value" ]; then
-        value="${XDG_DATA_HOME:-$HOME/.local/share}/codex-desktop/read-aloud/kokoro/kokoro-v1.0.onnx"
+        value="${XDG_DATA_HOME:-$HOME/.local/share}/kokoro/kokoro-v1.0.onnx"
     fi
     printf '%s\n' "$value"
 }
@@ -465,7 +465,7 @@ read_aloud_voices_path() {
         value="$(json_setting_value "codex-linux-read-aloud-kokoro-voices")"
     fi
     if [ -z "$value" ]; then
-        value="${XDG_DATA_HOME:-$HOME/.local/share}/codex-desktop/read-aloud/kokoro/voices-v1.0.bin"
+        value="${XDG_DATA_HOME:-$HOME/.local/share}/kokoro/voices-v1.0.bin"
     fi
     printf '%s\n' "$value"
 }
@@ -774,10 +774,16 @@ print_safe_disable_guidance() {
         list_includes_id "$disable_raw" "conversation-mode"; then
         local data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
         local read_aloud_data="$data_home/codex-desktop/read-aloud"
+        local read_aloud_model
+        local read_aloud_voices
         local read_aloud_cache="$HOME/.codex/plugins/cache/openai-bundled/read-aloud"
+        read_aloud_model="$(read_aloud_model_path)"
+        read_aloud_voices="$(read_aloud_voices_path)"
         info "Read Aloud opt-out: Not removing Read Aloud model files, Python runtimes, or plugin caches."
         info "Cleanup is separate and should list exact paths first, such as:"
         info "  $read_aloud_data"
+        info "  $read_aloud_model"
+        info "  $read_aloud_voices"
         info "  $read_aloud_cache"
     fi
 }
@@ -809,7 +815,7 @@ cleanup_path_is_safe() {
             ;;
     esac
     case "$path" in
-        "$config_home"/codex-desktop/*|"$data_home"/codex-desktop/read-aloud|"$data_home"/codex-desktop/read-aloud/*|"$HOME"/.codex/plugins/cache/openai-bundled/read-aloud|"$HOME"/.codex/plugins/cache/openai-bundled/read-aloud/*)
+        "$config_home"/codex-desktop/*|"$data_home"/codex-desktop/read-aloud|"$data_home"/codex-desktop/read-aloud/*|"$data_home"/kokoro/kokoro-v1.0.onnx|"$data_home"/kokoro/voices-v1.0.bin|"$HOME"/.codex/plugins/cache/openai-bundled/read-aloud|"$HOME"/.codex/plugins/cache/openai-bundled/read-aloud/*)
             return 0
             ;;
     esac
@@ -824,6 +830,11 @@ confirm_and_delete_path() {
     fi
     if ! cleanup_path_is_safe "$path"; then
         warn "Refusing cleanup path outside the known feature-owned locations: $path"
+        return
+    fi
+
+    if dry_run_enabled; then
+        info "Would delete: $path"
         return
     fi
 
@@ -877,8 +888,14 @@ run_feature_cleanup() {
         list_includes_id "$cleanup_raw" "conversation-mode"; then
         local data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
         local read_aloud_data="$data_home/codex-desktop/read-aloud"
+        local read_aloud_model
+        local read_aloud_voices
         local read_aloud_cache="$HOME/.codex/plugins/cache/openai-bundled/read-aloud"
+        read_aloud_model="$(read_aloud_model_path)"
+        read_aloud_voices="$(read_aloud_voices_path)"
         info "Read Aloud cleanup: model files, Python runtimes, and plugin caches are not removed unless their exact paths are confirmed."
+        confirm_and_delete_path "$read_aloud_model"
+        confirm_and_delete_path "$read_aloud_voices"
         confirm_and_delete_path "$read_aloud_data"
         confirm_and_delete_path "$read_aloud_cache"
     fi

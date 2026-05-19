@@ -1091,6 +1091,59 @@ test_setup_native_wizard_prints_deep_readiness_guidance() {
     assert_contains "$output_log" "Read Aloud plugin cache:"
 }
 
+test_setup_native_wizard_read_aloud_paths_match_runtime_defaults() {
+    info "Checking setup-native wizard Read Aloud default paths and Linux app id"
+    local workspace="$TMP_DIR/setup-native-read-aloud-defaults"
+    local features_root="$workspace/linux-features"
+    local config="$workspace/features.json"
+    local output_log="$workspace/output.log"
+    local fake_home="$workspace/home"
+
+    make_wizard_feature_root "$features_root"
+    printf '%s\n' '{"enabled":["read-aloud"]}' > "$config"
+    mkdir -p "$fake_home/.config/codex-cua-lab" "$fake_home/.local/share/kokoro"
+    printf '%s\n' '{"codex-linux-read-aloud-kokoro-python":"/custom/python"}' > "$fake_home/.config/codex-cua-lab/settings.json"
+    printf '%s\n' 'model marker' > "$fake_home/.local/share/kokoro/kokoro-v1.0.onnx"
+    printf '%s\n' 'voices marker' > "$fake_home/.local/share/kokoro/voices-v1.0.bin"
+
+    HOME="$fake_home" \
+    XDG_CONFIG_HOME="$fake_home/.config" \
+    XDG_DATA_HOME="$fake_home/.local/share" \
+    CODEX_LINUX_APP_ID="codex-cua-lab" \
+    CODEX_APP_ID="codex-desktop" \
+    CODEX_BOOTSTRAP_NONINTERACTIVE=1 \
+    CODEX_LINUX_FEATURES_ROOT="$features_root" \
+    CODEX_LINUX_FEATURES_CONFIG="$config" \
+        bash "$REPO_DIR/scripts/bootstrap-wizard.sh" >"$output_log"
+
+    assert_contains "$output_log" "Settings file: $fake_home/.config/codex-cua-lab/settings.json (file)"
+    assert_contains "$output_log" "Kokoro python: /custom/python (missing)"
+    assert_contains "$output_log" "Kokoro model: $fake_home/.local/share/kokoro/kokoro-v1.0.onnx (file)"
+    assert_contains "$output_log" "Kokoro voices: $fake_home/.local/share/kokoro/voices-v1.0.bin (file)"
+    assert_not_contains "$output_log" "$fake_home/.local/share/codex-desktop/read-aloud/kokoro/kokoro-v1.0.onnx"
+}
+
+test_setup_native_wizard_sway_hint_is_conservative() {
+    info "Checking setup-native wizard Sway backend hint stays conservative"
+    local workspace="$TMP_DIR/setup-native-sway-hint"
+    local features_root="$workspace/linux-features"
+    local config="$workspace/features.json"
+    local output_log="$workspace/output.log"
+
+    make_wizard_feature_root "$features_root"
+    printf '%s\n' '{"enabled":[]}' > "$config"
+
+    XDG_CURRENT_DESKTOP=sway \
+    DESKTOP_SESSION=sway \
+    CODEX_BOOTSTRAP_NONINTERACTIVE=1 \
+    CODEX_LINUX_FEATURES_ROOT="$features_root" \
+    CODEX_LINUX_FEATURES_CONFIG="$config" \
+        bash "$REPO_DIR/scripts/bootstrap-wizard.sh" >"$output_log"
+
+    assert_contains "$output_log" "Sway -> not explicitly supported by the current i3 backend"
+    assert_not_contains "$output_log" "Sway -> i3 IPC backend through swaymsg"
+}
+
 test_setup_native_wizard_cleanup_requires_interactive_confirmation() {
     info "Checking setup-native wizard cleanup refuses non-interactive deletion"
     local workspace="$TMP_DIR/setup-native-cleanup-noninteractive"
@@ -1117,6 +1170,45 @@ test_setup_native_wizard_cleanup_requires_interactive_confirmation() {
 
     assert_file_exists "$key_file"
     assert_contains "$output_log" "Cleanup requires an interactive terminal and exact path confirmation."
+}
+
+test_setup_native_wizard_dry_run_cleanup_does_not_delete_confirmed_paths() {
+    info "Checking setup-native wizard dry-run cleanup is non-destructive"
+    local workspace="$TMP_DIR/setup-native-cleanup-dry-run"
+    local features_root="$workspace/linux-features"
+    local config="$workspace/features.json"
+    local output_log="$workspace/output.log"
+    local fake_home="$workspace/home"
+    local key_file="$fake_home/.config/codex-desktop/remote-control-device-keys-v1.json"
+
+    make_wizard_feature_root "$features_root"
+    printf '%s\n' '{"enabled":["remote-mobile-control"]}' > "$config"
+    mkdir -p "$(dirname "$key_file")"
+    printf '%s\n' '{"deviceKeys":[]}' > "$key_file"
+
+    if ! command -v script >/dev/null 2>&1; then
+        info "Skipping dry-run cleanup smoke test because script(1) is unavailable"
+        return
+    fi
+
+    (
+        export HOME="$fake_home"
+        export XDG_CONFIG_HOME="$fake_home/.config"
+        export CODEX_BOOTSTRAP_DRY_RUN=1
+        export CODEX_BOOTSTRAP_CLEANUP_FEATURES="remote-mobile-control"
+        export CODEX_LINUX_FEATURES_ROOT="$features_root"
+        export CODEX_LINUX_FEATURES_CONFIG="$config"
+        {
+            printf '\n'
+            printf '\n'
+            printf '\n'
+            printf 'DELETE %s\n' "$key_file"
+        } | script -qefc "bash $REPO_DIR/scripts/bootstrap-wizard.sh" /dev/null >"$output_log"
+    )
+
+    assert_file_exists "$key_file"
+    assert_contains "$output_log" "Would delete: $key_file"
+    assert_not_contains "$output_log" "Deleted $key_file"
 }
 
 test_setup_native_wizard_cleanup_deletes_only_confirmed_paths() {
@@ -4160,7 +4252,10 @@ main() {
     test_setup_native_wizard_warns_when_conversation_mode_lacks_read_aloud
     test_setup_native_wizard_dry_runs_deps_and_install_native
     test_setup_native_wizard_prints_deep_readiness_guidance
+    test_setup_native_wizard_read_aloud_paths_match_runtime_defaults
+    test_setup_native_wizard_sway_hint_is_conservative
     test_setup_native_wizard_cleanup_requires_interactive_confirmation
+    test_setup_native_wizard_dry_run_cleanup_does_not_delete_confirmed_paths
     test_setup_native_wizard_cleanup_deletes_only_confirmed_paths
     test_upstream_build_app_workflow_tracks_dmg_metadata
     test_installer_detects_electron_version_from_plist

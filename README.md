@@ -126,7 +126,7 @@ make install-native
 PACKAGE_WITH_UPDATER=0 make install-native
 ```
 
-The wizard is conservative with opt-outs. Removing a feature id from `features.json` does not delete local device keys, Read Aloud model files, Python runtimes, plugin caches, or system services. Cleanup is a separate interactive path through `CODEX_BOOTSTRAP_CLEANUP_FEATURES=remote-mobile-control,read-aloud make setup-native`; each deletion requires typing `DELETE <exact path>`. It prints the relevant paths and tells you when a rebuild/reinstall, `sudo` / `pkexec`, logout/login, input-group membership, ydotoold service work, or portal package install needs explicit user action.
+The wizard is conservative with opt-outs. Removing a feature id from `features.json` does not delete local device keys, Read Aloud model files, Python runtimes, plugin caches, or system services. Cleanup is a separate interactive path through `CODEX_BOOTSTRAP_CLEANUP_FEATURES=remote-mobile-control,read-aloud make setup-native`; each deletion requires typing `DELETE <exact path>`, and `CODEX_BOOTSTRAP_DRY_RUN=1` prints the cleanup targets without deleting them. It prints the relevant paths and tells you when a rebuild/reinstall, `sudo` / `pkexec`, logout/login, input-group membership, ydotoold service work, or portal package install needs explicit user action.
 
 ### AppImage local self-build
 
