@@ -14,6 +14,9 @@ const {
 const {
   patchAssetFiles,
 } = require("./shared.js");
+const {
+  drainStrategies,
+} = require("./strategy-telemetry.js");
 
 const FAILED_REQUIRED = "failed-required";
 const REQUIRED_UPSTREAM = "required-upstream";
@@ -140,7 +143,10 @@ function describePatchError(descriptor, error) {
 
 // Runs a descriptor's apply function so that a throw never escapes the engine:
 // the descriptor's ciPolicy — not the throw — decides whether the build fails.
+// Strategy telemetry recorded during the apply is drained into the result so
+// it can be attributed to this descriptor's report entry.
 function runDescriptorApply(descriptor, fn, fallbackValue) {
+  drainStrategies(); // discard stale entries from direct helper calls
   const captured = captureWarnings(() => {
     try {
       return { ok: true, value: fn() };
@@ -153,6 +159,7 @@ function runDescriptorApply(descriptor, fn, fallbackValue) {
     value: outcome.value,
     warnings: captured.warnings,
     error: outcome.ok ? null : outcome.error,
+    strategies: drainStrategies(),
   };
 }
 
@@ -182,14 +189,18 @@ function recordDescriptorPatch(report, descriptor, status, reason, context, extr
   });
 }
 
-function recordDescriptorError(report, descriptor, error, context) {
+function strategyMetadata(strategies) {
+  return Array.isArray(strategies) && strategies.length > 0 ? { strategies } : null;
+}
+
+function recordDescriptorError(report, descriptor, error, context, strategies = null) {
   recordDescriptorPatch(
     report,
     descriptor,
     descriptorFailureStatus(descriptor),
     describePatchError(descriptor, error),
     context,
-    { error: true },
+    { error: true, ...(strategyMetadata(strategies) ?? {}) },
   );
 }
 
@@ -237,7 +248,7 @@ function applyMainBundlePatchDescriptors(source, descriptors, context, report) {
     }
     context.reportWarnings = result.warnings;
     if (result.error != null) {
-      recordDescriptorError(report, descriptor, result.error, context);
+      recordDescriptorError(report, descriptor, result.error, context, result.strategies);
     } else {
       recordDescriptorPatch(
         report,
@@ -245,6 +256,7 @@ function applyMainBundlePatchDescriptors(source, descriptors, context, report) {
         patchStatusFromDescriptorChange(descriptor, patched !== before, result.warnings),
         result.warnings[0] ?? null,
         context,
+        strategyMetadata(result.strategies),
       );
     }
     delete context.reportWarnings;
@@ -258,9 +270,16 @@ function defaultWebviewMissingWarning(extractedDir, descriptor) {
   return `WARN: Could not find ${missingDescription} in ${path.join(extractedDir, "webview", "assets")} — skipping ${skipDescription}`;
 }
 
-function recordAssetDescriptorPatch(report, descriptor, patchResult, warnings, context) {
+function recordAssetDescriptorPatch(report, descriptor, patchResult, warnings, context, strategies = null) {
   if (patchResult.matched === 0) {
-    recordDescriptorPatch(report, descriptor, descriptorFailureStatus(descriptor), warnings[0] ?? "no matching bundle found", context);
+    recordDescriptorPatch(
+      report,
+      descriptor,
+      descriptorFailureStatus(descriptor),
+      warnings[0] ?? "no matching bundle found",
+      context,
+      strategyMetadata(strategies),
+    );
     return;
   }
   recordDescriptorPatch(
@@ -269,6 +288,7 @@ function recordAssetDescriptorPatch(report, descriptor, patchResult, warnings, c
     patchStatusFromDescriptorChange(descriptor, patchResult.changed > 0, warnings),
     warnings[0] ?? null,
     context,
+    strategyMetadata(strategies),
   );
 }
 
@@ -289,7 +309,7 @@ function applyWebviewAssetPatchDescriptors(extractedDir, descriptors, context, r
     }
     const missingWarning = descriptor.missingWarning ??
       defaultWebviewMissingWarning(extractedDir, descriptor);
-    const { value: result, warnings, error } = runDescriptorApply(
+    const { value: result, warnings, error, strategies } = runDescriptorApply(
       descriptor,
       () => patchAssetFiles(extractedDir, pattern, (source) => descriptor.apply(source, context), missingWarning),
       { matched: 0, changed: 0 },
@@ -297,9 +317,9 @@ function applyWebviewAssetPatchDescriptors(extractedDir, descriptors, context, r
     context.reportWarnings = warnings;
     if (error != null) {
       warnings.push(`WARN: ${describePatchError(descriptor, error)}`);
-      recordDescriptorError(report, descriptor, error, context);
+      recordDescriptorError(report, descriptor, error, context, strategies);
     } else {
-      recordAssetDescriptorPatch(report, descriptor, result, warnings, context);
+      recordAssetDescriptorPatch(report, descriptor, result, warnings, context, strategies);
     }
     delete context.reportWarnings;
   }
@@ -316,7 +336,7 @@ function applyExtractedAppPatchDescriptors(extractedDir, descriptors, context, r
       continue;
     }
 
-    const { value: result, warnings, error } = runDescriptorApply(
+    const { value: result, warnings, error, strategies } = runDescriptorApply(
       descriptor,
       () => descriptor.apply(extractedDir, context),
       null,
@@ -324,7 +344,7 @@ function applyExtractedAppPatchDescriptors(extractedDir, descriptors, context, r
     context.reportWarnings = warnings;
     if (error != null) {
       warnings.push(`WARN: ${describePatchError(descriptor, error)}`);
-      recordDescriptorError(report, descriptor, error, context);
+      recordDescriptorError(report, descriptor, error, context, strategies);
       delete context.reportWarnings;
       continue;
     }
@@ -339,7 +359,7 @@ function applyExtractedAppPatchDescriptors(extractedDir, descriptors, context, r
     const reason = typeof statusResult === "object" && statusResult != null
       ? statusResult.reason
       : result?.reason ?? warnings[0] ?? null;
-    recordDescriptorPatch(report, descriptor, status, reason, context);
+    recordDescriptorPatch(report, descriptor, status, reason, context, strategyMetadata(strategies));
     delete context.reportWarnings;
   }
 }

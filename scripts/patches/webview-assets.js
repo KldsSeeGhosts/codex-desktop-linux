@@ -1,5 +1,7 @@
 "use strict";
 
+const { recordStrategy } = require("./strategy-telemetry.js");
+
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -1111,26 +1113,31 @@ function applyPersistentRateLimitFooterPatch(currentSource) {
   if (!patchedSource.includes("function codexLinuxRateLimitFooter(")) {
     const legacyInsertionNeedle = "function TF(e){";
     if (latestFooterControls != null) {
+      recordStrategy("rate-limit-footer", "upstream-latest");
       patchedSource = patchedSource.replace(
         latestFooterControls.insertionNeedle,
         `${latestFooterFunction}${latestFooterControls.insertionNeedle}`,
       );
     } else if (currentSymbols != null && currentFooterFunction != null) {
+      recordStrategy("rate-limit-footer", "upstream-account-signal");
       patchedSource = patchedSource.replace(
         currentSymbols.insertionNeedle,
         `${currentFooterFunction}${currentSymbols.insertionNeedle}`,
       );
     } else if (currentPermissionsFooterSymbols != null && currentPermissionsFooterFunction != null) {
+      recordStrategy("rate-limit-footer", "upstream-permissions");
       patchedSource = patchedSource.replace(
         currentPermissionsFooterSymbols.insertionNeedle,
         `${currentPermissionsFooterFunction}${currentPermissionsFooterSymbols.insertionNeedle}`,
       );
     } else if (patchedSource.includes(currentComposerStatusNeedle)) {
+      recordStrategy("rate-limit-footer", "upstream-composer-status");
       patchedSource = patchedSource.replace(
         currentComposerStatusNeedle,
         `${currentComposerFooterFunction}${currentComposerStatusNeedle}`,
       );
     } else if (patchedSource.includes(legacyInsertionNeedle)) {
+      recordStrategy("rate-limit-footer", "legacy:tf-bundle");
       patchedSource = patchedSource.replace(
         legacyInsertionNeedle,
         `${legacyFooterFunction}${legacyInsertionNeedle}`,
@@ -1166,6 +1173,7 @@ function applyPersistentRateLimitFooterPatch(currentSource) {
   const hasFooterFunction = patchedSource.includes("function codexLinuxRateLimitFooter(");
   if (!hasFooterFunction) {
     if (shouldWarnAboutMissingFooterHelper) {
+      recordStrategy("rate-limit-footer", "none");
       console.warn("WARN: Could not insert persistent rate limit footer helper — skipping composer footer limit patch");
     }
     return currentSource;
@@ -1199,6 +1207,7 @@ function applyPersistentRateLimitFooterPatch(currentSource) {
   }
 
   if (patchedSource.includes(previousHomeOnlyCall)) {
+    recordStrategy("rate-limit-footer", "legacy:home-only-call");
     patchedSource = patchedSource.replace(
       previousHomeOnlyCall,
       homeFooterCall ?? "null",
@@ -1206,6 +1215,7 @@ function applyPersistentRateLimitFooterPatch(currentSource) {
   }
 
   if (patchedSource.includes(previousUnguardedHomeGroupCall)) {
+    recordStrategy("rate-limit-footer", "legacy:unguarded-home-group");
     patchedSource = patchedSource.replace(
       previousUnguardedHomeGroupCall,
       `children:[Ut,${homeFooterCall ?? "null"},Wt,Gt]`,
@@ -1219,12 +1229,14 @@ function applyPersistentRateLimitFooterPatch(currentSource) {
     previousBrokenCurrentCall.test(patchedSource) &&
     currentSymbols != null
   ) {
+    recordStrategy("rate-limit-footer", "legacy:broken-current-call");
     patchedSource = patchedSource.replace(
       previousBrokenCurrentCall,
       homeFooterCall ?? "null",
     );
   }
   if (patchedSource.includes(previousHomeOnlyCall)) {
+    recordStrategy("rate-limit-footer", "legacy:home-only-call");
     patchedSource = patchedSource.replace(
       previousHomeOnlyCall,
       homeFooterCall ?? "null",

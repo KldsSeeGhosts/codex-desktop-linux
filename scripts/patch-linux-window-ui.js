@@ -180,11 +180,6 @@ if (require.main === module) {
   main();
 }
 
-function applyLinuxBrowserUseIabVisibleOnCreatePatch(currentSource) {
-  // Compatibility shim for old callers after the runtime patch was removed.
-  return currentSource;
-}
-
 module.exports = {
   COMPUTER_USE_UI_ENV_VAR,
   COMPUTER_USE_UI_SETTINGS_KEY,
@@ -202,7 +197,6 @@ module.exports = {
   applyLinuxAppUpdaterBridgePatch,
   applyLinuxAppUpdaterMenuPatch,
   applyLinuxAvatarOverlayMousePassthroughPatch,
-  applyLinuxBrowserUseIabVisibleOnCreatePatch,
   applyLinuxBrowserUseAvailabilityPatch,
   applyLinuxBrowserUseExternalAvailabilityPatch,
   applyLinuxBrowserUseNonLocalNavigationPatch,

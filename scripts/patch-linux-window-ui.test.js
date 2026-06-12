@@ -21,7 +21,6 @@ const {
   applyLinuxDesktopSettingsIndexPatch,
   applyLinuxAvatarOverlayMousePassthroughPatch,
   applyBrowserUseNodeReplApprovalPatch,
-  applyLinuxBrowserUseIabVisibleOnCreatePatch,
   applyLinuxBrowserUseRouteLivenessPatch,
   applyLinuxChromeExtensionStatusPatch,
   applyLinuxChromeNativeHostRuntimePatch,
@@ -4177,12 +4176,6 @@ test("trusts Linux patched bundled Browser Use clients by hashing staged files",
   }
 });
 
-test("keeps removed IAB visible patch export as a no-op", () => {
-  const source = "class BrowserSessionRegistry{}";
-
-  assert.equal(applyLinuxBrowserUseIabVisibleOnCreatePatch(source), source);
-});
-
 test("patchMainBundleSource does not force the in-app browser panel visible", () => {
   const source =
     "var CF=class{async createTabForBrowserUse(e){let t=this.getActiveBrowserUseTab(e,{assertCurrentPageAllowed:!1});if(t!=null)return await this.navigateTabToInitialPage(t),this.serializeTab(t);let n=this.getRequiredBrowserHost(e);n.setBrowserUseActive(!0,e.turnId);let r=await n.openPageForBrowserUse({startingUrl:this.initialPageUrl,turnId:e.turnId}),i=this.updateTabForPage(r,n.routeKey);return SF().info(`IAB_LIFECYCLE iab createTab mapped page to tab`,{}),this.markBrowserUseCommandForTab(e,i),this.selectedTabIdsByRouteKey.set(n.routeKey,i.cdpTabId),this.serializeTab(i)}};";
@@ -5472,6 +5465,42 @@ test("a disabled patch is recorded as skipped-disabled and never counts as a cri
       !criticalFailuresFromReport(report).some((failure) => failure.name === "disabled-required-sample"),
       "a disabled patch is not applicable, so it must not fail the build",
     );
+  } finally {
+    fs.rmSync(coreRoot, { recursive: true, force: true });
+    fs.rmSync(tempApp, { recursive: true, force: true });
+  }
+});
+
+test("strategy telemetry recorded during apply lands on the patch report entry", () => {
+  const coreRoot = fs.mkdtempSync(path.join(os.tmpdir(), "codex-strategy-core-"));
+  const tempApp = fs.mkdtempSync(path.join(os.tmpdir(), "codex-strategy-app-"));
+  try {
+    const telemetryPath = path.join(__dirname, "patches", "strategy-telemetry.js");
+    writeCorePatchFixture(coreRoot, "sample/instrumented", [
+      "\"use strict\";",
+      `const { recordStrategy } = require(${JSON.stringify(telemetryPath)});`,
+      "module.exports = {",
+      "  id: \"instrumented-sample\",",
+      "  phase: \"main-bundle\",",
+      "  ciPolicy: \"optional\",",
+      "  order: 100,",
+      "  apply: (source) => {",
+      "    recordStrategy(\"sample-group\", \"legacy:old-shape\");",
+      "    return source.replace(\"codexLinuxStrategyFixture()\", \"codexLinuxStrategyPatched()\");",
+      "  },",
+      "};",
+    ].join("\n"));
+
+    const buildDir = path.join(tempApp, ".vite", "build");
+    fs.mkdirSync(buildDir, { recursive: true });
+    fs.writeFileSync(path.join(buildDir, "main.js"), "codexLinuxStrategyFixture()");
+
+    const report = createPatchReport();
+    captureWarns(() => patchExtractedApp(tempApp, { report, corePatchRoot: coreRoot }));
+
+    const entry = report.patches.find((patch) => patch.name === "instrumented-sample");
+    assert.equal(entry?.status, "applied");
+    assert.deepEqual(entry?.strategies, [{ group: "sample-group", strategy: "legacy:old-shape" }]);
   } finally {
     fs.rmSync(coreRoot, { recursive: true, force: true });
     fs.rmSync(tempApp, { recursive: true, force: true });
