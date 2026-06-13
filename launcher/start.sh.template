@@ -1455,7 +1455,17 @@ pid_cmdline_arg0_path() {
     local arg0
 
     arg0="$(pid_cmdline_arg0 "$pid")"
-    printf '%s\n' "${arg0%% *}"
+    printf '%s\n' "$arg0"
+}
+
+pid_arg0_matches_path() {
+    local actual="$1"
+    local expected="$2"
+
+    case "$actual" in
+        "$expected"|"$expected "*) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 pid_environ_lines() {
@@ -1472,7 +1482,7 @@ pid_matches_executable() {
     [[ "$pid" =~ ^[0-9]+$ ]] || return 1
     [ -d "/proc/$pid" ] || return 1
     actual="$(pid_cmdline_arg0_path "$pid")"
-    [ "$actual" = "$expected" ] || return 1
+    pid_arg0_matches_path "$actual" "$expected" || return 1
     pid_is_current_user "$pid" || return 1
     ! pid_is_electron_helper "$pid"
 }
@@ -1535,8 +1545,11 @@ pid_is_foreign_codex_electron() {
     [ -d "/proc/$pid" ] || return 1
     actual="$(pid_cmdline_arg0_path "$pid")"
     [ -n "$actual" ] || return 1
-    [ "$actual" != "$SCRIPT_DIR/electron" ] || return 1
-    [ "${actual##*/}" = "electron" ] || return 1
+    ! pid_arg0_matches_path "$actual" "$SCRIPT_DIR/electron" || return 1
+    case "${actual##*/}" in
+        electron|electron\ *) ;;
+        *) return 1 ;;
+    esac
     pid_is_current_user "$pid" || return 1
     ! pid_is_electron_helper "$pid" || return 1
     pid_matches_app_identity "$pid"
@@ -1606,12 +1619,12 @@ pid_is_orphaned_runtime_process() {
 
     arg0="$(pid_cmdline_arg0_path "$pid")"
     case "$arg0" in
-        "$SCRIPT_DIR/electron")
+        "$SCRIPT_DIR/electron"|"$SCRIPT_DIR/electron "*)
             pid_is_current_user "$pid" || return 1
             pid_matches_app_identity "$pid" || return 1
             pid_is_electron_helper "$pid"
             ;;
-        "$SCRIPT_DIR/chrome_crashpad_handler"|"$SCRIPT_DIR/resources/node-runtime/bin/node"|"$SCRIPT_DIR/resources/node_repl")
+        "$SCRIPT_DIR/chrome_crashpad_handler"|"$SCRIPT_DIR/chrome_crashpad_handler "*|"$SCRIPT_DIR/resources/node-runtime/bin/node"|"$SCRIPT_DIR/resources/node-runtime/bin/node "*|"$SCRIPT_DIR/resources/node_repl"|"$SCRIPT_DIR/resources/node_repl "*)
             pid_is_current_user "$pid" || return 1
             pid_matches_app_identity "$pid" || return 1
             return 0

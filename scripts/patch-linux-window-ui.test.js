@@ -3221,6 +3221,19 @@ test("extends app-server startup waits while state db backfill is running", () =
   assert.equal(context.turnTimeout, 3e4);
 });
 
+test("skips app-server timeout rewrite when the helper insertion anchor drifts", () => {
+  const source =
+    "class RequestClient{createRequest(e,t,n){let r=P(B()),i=n?.timeoutMs??0,a=Da(t),o=this.requestPromises.size;return{request:{id:r,method:e,params:t},conversationId:a,pending:o,timeoutMs:i}}}";
+
+  const { value: patched, warnings } = captureWarns(() =>
+    applyLinuxAppServerBackfillWaitPatch(source),
+  );
+
+  assert.equal(patched, source);
+  assert.match(warnings.join("\n"), /Could not insert app-server backfill wait helper/);
+  assert.doesNotMatch(patched, /codexLinuxAppServerBackfillTimeoutMs\(/);
+});
+
 test("adds Linux package updater behind the existing app updater manager", () => {
   const patched = applyPatchTwice(applyLinuxAppUpdaterBridgePatch, appUpdaterBundleFixture());
 

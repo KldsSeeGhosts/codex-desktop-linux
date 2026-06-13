@@ -19,14 +19,14 @@ prelaunch_timeout_seconds() {
 
     case "$value" in
         ""|*[!0-9]*)
-            log "invalid CODEX_WRAPPER_UPDATER_PRELAUNCH_TIMEOUT_SECONDS='${CODEX_WRAPPER_UPDATER_PRELAUNCH_TIMEOUT_SECONDS:-}'; using 5"
+            log "invalid CODEX_WRAPPER_UPDATER_PRELAUNCH_TIMEOUT_SECONDS='${CODEX_WRAPPER_UPDATER_PRELAUNCH_TIMEOUT_SECONDS:-}'; using 5" >&2
             echo 5
             return 0
             ;;
     esac
 
     if [ "$value" -gt 300 ]; then
-        log "CODEX_WRAPPER_UPDATER_PRELAUNCH_TIMEOUT_SECONDS=$value is too high; using 300"
+        log "CODEX_WRAPPER_UPDATER_PRELAUNCH_TIMEOUT_SECONDS=$value is too high; using 300" >&2
         echo 300
         return 0
     fi

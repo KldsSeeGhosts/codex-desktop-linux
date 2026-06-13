@@ -595,7 +595,11 @@ function applyLinuxAppServerBackfillWaitPatch(currentSource) {
     }
   }
 
-  if (shouldPatchTimeout && !timeoutPatchedRegex.test(patchedSource)) {
+  if (
+    shouldPatchTimeout &&
+    !timeoutPatchedRegex.test(patchedSource) &&
+    patchedSource.includes("function codexLinuxAppServerBackfillTimeoutMs(")
+  ) {
     const timeoutPatched = patchedSource.replace(
       timeoutNeedle,
       (_match, methodVar, paramsVar, optionsVar, requestIdVar, requestIdExpr, timeoutVar) =>

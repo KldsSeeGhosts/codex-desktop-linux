@@ -2823,6 +2823,8 @@ reconcile_body = source.split("reconcile_runtime_state() {", 1)[1].split("set_el
 orphan_body = source.split("pid_is_orphaned_runtime_process() {", 1)[1].split("detect_cross_install_conflict() {", 1)[0]
 reap_body = source.split("reap_orphaned_runtime_processes() {", 1)[1].split("reconcile_runtime_state() {", 1)[0]
 match_executable_body = source.split("pid_matches_executable() {", 1)[1].split("find_running_app_pid() {", 1)[0]
+arg0_path_body = source.split("pid_cmdline_arg0_path() {", 1)[1].split("pid_arg0_matches_path() {", 1)[0]
+arg0_match_body = source.split("pid_arg0_matches_path() {", 1)[1].split("pid_environ_lines() {", 1)[0]
 foreign_body = source.split("pid_is_foreign_codex_electron() {", 1)[1].split("discover_running_app_pid() {", 1)[0]
 summary_body = source.split("pid_summary() {", 1)[1].split("pid_is_orphaned_runtime_process() {", 1)[0]
 if 'LAUNCHER_ARGS=()' not in source:
@@ -2881,6 +2883,10 @@ if 'echo "$ELECTRON_PID" > "$APP_PID_FILE"' not in launch_body:
     raise SystemExit("launch_electron must still write APP_PID_FILE for normal cold launches")
 if "pid_cmdline_arg0_path" not in source:
     raise SystemExit("launcher process discovery must use cmdline arg0 path rather than canonicalizing /proc exe paths")
+if '${arg0%% *}' in arg0_path_body:
+    raise SystemExit("launcher process discovery must preserve argv0 paths containing spaces")
+if '"$expected"|"$expected "*' not in arg0_match_body:
+    raise SystemExit("launcher process discovery must accept exact argv0 paths and no-NUL cmdline fallbacks")
 if "/proc/[0-9]*/exe" in source or 'readlink -f "/proc/$pid/exe"' in source or 'canonical_path "$SCRIPT_DIR/electron"' in source:
     raise SystemExit("launcher process discovery must not scan or canonicalize /proc exe paths; autofs can block those stats")
 if "command -v fuser" in source or "timeout 1 fuser" in source or "launcher_lock_holder_pids" in source:
