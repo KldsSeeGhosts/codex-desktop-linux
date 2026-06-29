@@ -7,11 +7,12 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
+const workspaceRootOpenTargetsPatch = require("./patches/core/all-linux/extracted-app/workspace-root-open-targets/patch.js");
 const {
   apply: patchWorkspaceRootOpenTargets,
   applyWorkspaceRootOpenTargetsPatch,
   enabledWorkspaceRootTargets,
-} = require("./patches/core/all-linux/extracted-app/workspace-root-open-targets/patch.js");
+} = workspaceRootOpenTargetsPatch;
 
 test("workspace root dropdown adds Linux open targets alongside File Manager", () => {
   const mainSource = [
@@ -184,6 +185,49 @@ test("workspace root open targets patch is not applicable without Linux targets"
       changed: 0,
       status: "skipped-target",
       reason: "No Linux editor or terminal open targets are enabled",
+    });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("workspace root open targets patch fails required when Linux targets are enabled but the File Manager chunk drifted", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "codex-workspace-root-open-targets-"));
+  try {
+    const buildDir = path.join(root, ".vite", "build");
+    const assetsDir = path.join(root, "webview", "assets");
+    fs.mkdirSync(buildDir, { recursive: true });
+    fs.mkdirSync(assetsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(buildDir, "main.js"),
+      [
+        "function codexLinuxIdeCommand(){}",
+        "var lM={id:`vscode`};",
+        "var wN={id:`zed`,platforms:{linux:{label:`Zed`}}};",
+      ].join(""),
+    );
+    fs.writeFileSync(
+      path.join(assetsDir, "app-main-current.js"),
+      [
+        "function CurrentWorkspaceMenu(){",
+        "let _=`/tmp/project`,a=()=>{},x=A(`open-file`);",
+        "return (0,$.jsx)(di.Item,{onSelect:a,children:`Project`})",
+        "}",
+      ].join(""),
+    );
+
+    const result = patchWorkspaceRootOpenTargets(root);
+    const expectedReason = "Could not find workspace-root File Manager open action while Linux targets are enabled";
+
+    assert.deepEqual(result, {
+      matched: 0,
+      changed: 0,
+      status: "failed-required",
+      reason: expectedReason,
+    });
+    assert.deepEqual(workspaceRootOpenTargetsPatch.status(result, []), {
+      status: "failed-required",
+      reason: expectedReason,
     });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

@@ -8,6 +8,8 @@ const {
 } = require("../../../../shared.js");
 
 const PATCH_MARKER = "codexLinuxWorkspaceRootOpenTarget";
+const MISSING_FILE_MANAGER_ACTION_REASON =
+  "Could not find workspace-root File Manager open action while Linux targets are enabled";
 
 function warn(message) {
   console.warn(`WARN: ${message} - skipping Linux workspace-root open targets patch`);
@@ -315,7 +317,12 @@ function patchWorkspaceRootOpenTargets(extractedDir) {
   }
 
   if (matched === 0) {
-    return { matched, changed };
+    return {
+      matched,
+      changed,
+      status: "failed-required",
+      reason: MISSING_FILE_MANAGER_ACTION_REASON,
+    };
   }
   return { matched, changed };
 }
