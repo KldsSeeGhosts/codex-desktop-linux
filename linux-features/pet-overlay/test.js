@@ -33,6 +33,17 @@ function applyPatchTwice(source, context = {}) {
   return patched;
 }
 
+function captureWarnings(callback) {
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(" "));
+  try {
+    return { result: callback(), warnings };
+  } finally {
+    console.warn = originalWarn;
+  }
+}
+
 function currentAvatarOverlayBundleFixture() {
   return [
     "let a=require(`electron`),f=require(`node:child_process`);",
@@ -178,13 +189,39 @@ test("patches current avatar overlay layout, transparency, and window sync", () 
   assert.equal((patched.match(/codexPetOverlayLayoutForDisplay/g) ?? []).length, 2);
 });
 
-test("patches legacy avatar overlay layout shape", () => {
-  const patched = applyPatchTwice(legacyAvatarOverlayBundleFixture());
+test("does not retain an obsolete avatar overlay layout fallback", () => {
+  const source = legacyAvatarOverlayBundleFixture();
+  const { result, warnings } = captureWarnings(() => applyPetOverlayPatch(source));
 
-  assert.match(
-    patched,
-    /r=this\.codexPetOverlayLayoutForDisplay\(t,r,e\),this\.anchor=r\.anchor,this\.layout=r/,
+  assert.equal(result, source);
+  assert.match(warnings.join("\n"), /Could not identify avatar overlay layout variable/);
+  assert.match(warnings.join("\n"), /Pet overlay patch is incomplete/);
+});
+
+test("discards every change when a required current hook drifts", () => {
+  const source = currentAvatarOverlayBundleFixture().replace(
+    "e.moveTop(),e.showInactive(),",
+    "e.showInactive(),",
   );
+  const { result, warnings } = captureWarnings(() => applyPetOverlayPatch(source));
+
+  assert.equal(result, source);
+  assert.match(warnings.join("\n"), /Could not identify avatar overlay showWindow display point/);
+  assert.match(warnings.join("\n"), /Pet overlay patch is incomplete/);
+});
+
+test("passive mode fails closed when the current create-window shape drifts", () => {
+  const source = currentAvatarOverlayBundleFixture().replace(
+    "appearance:`avatarOverlay`,alwaysOnTop:process.platform===`linux`,skipTaskbar:process.platform===`linux`,focusable:process.platform===`linux`?!0:!1",
+    "appearance:`avatarOverlay`,alwaysOnTop:process.platform===`linux`,skipTaskbar:process.platform===`linux`,focusable:canFocus",
+  );
+  const context = {
+    feature: { manifest: { petOverlay: { mode: "passive" } }, settings: {} },
+  };
+  const { result, warnings } = captureWarnings(() => applyPetOverlayPatch(source, context));
+
+  assert.equal(result, source);
+  assert.match(warnings.join("\n"), /Pet overlay patch is incomplete/);
 });
 
 test("lockPosition true pins the mascot to the configured display gravity", () => {
@@ -473,6 +510,8 @@ function runHyprlandHintScenario({ clientsJson, execError = null, settings = {},
     childProcess: {
       execFile(command, args, _options, callback) {
         assert.equal(command, "hyprctl");
+        assert.equal(_options.timeout, 1200);
+        assert.notEqual(_options.shell, true);
         calls.push(args);
         if (args[0] === "clients") {
           callback(execError, clientsJson);
@@ -543,6 +582,15 @@ test("Hyprland matching rejects foreign processes and malformed addresses", () =
       },
       {
         address: "$(not-safe)",
+        at: [1540, 736],
+        floating: true,
+        fullscreen: 0,
+        pid: 4242,
+        size: [356, 320],
+        title: "Codex Pet Overlay",
+      },
+      {
+        address: `0x${"a".repeat(128)}`,
         at: [1540, 736],
         floating: true,
         fullscreen: 0,
