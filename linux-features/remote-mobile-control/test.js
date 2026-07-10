@@ -36,7 +36,6 @@ const {
   applyLinuxRemoteMobileConversationHydrationPatch,
   applyLinuxRemoteControlStatusReadGuardPatch,
   applyLinuxRemoteControlStatusWaitPatch,
-  applyLinuxRemoteMobileProjectlessRemoteTaskPatch,
   applyLinuxRemoteConnectionsRefreshPatch,
   applyLinuxRemoteControlSettingsUxPatch,
   applyLinuxRemoteControlSelectedTabPatch,
@@ -50,11 +49,9 @@ const OLD_APP_SERVER_MANAGER_ASSET =
   "app-initial~app-main~hotkey-window-thread-page~thread-app-shell-chrome~header~remote-conver~test.js";
 const CURRENT_REMOTE_CONVERSATION_ASSET =
   "app-initial~app-main~worktree-init-v2-page~remote-conversation-page~new-thread-panel-page~o~test.js";
-const CURRENT_PROJECTLESS_REMOTE_TASK_ASSET =
-  "app-initial~app-main~worktree-init-v2-page~remote-conversation-page~pull-requests-page~plug~test.js";
 const LATEST_REMOTE_CONVERSATION_ASSET =
   "app-initial~app-main~new-thread-panel-page~appgen-library-page~hotkey-window-thread-page~ho~glxlkd48-test.js";
-const LATEST_PROJECTLESS_REMOTE_TASK_ASSET =
+const CURRENT_PROJECTLESS_REMOTE_TASK_ASSET =
   "app-initial~app-main~new-thread-panel-page~appgen-library-page~hotkey-window-thread-page~ho~iufn7mg3-test.js";
 const UNIFIED_REMOTE_CONVERSATION_ASSET =
   "app-initial~app-main~pull-request-code-review~onboarding-page~hotkey-window-thread-page~cha~b76hmflu-test.js";
@@ -312,12 +309,6 @@ function syntheticCurrentStatusWaitBundle() {
 function syntheticAppMainActiveStatusBundle() {
   return [
     "function pS({latestTurnStatus:e,resumeState:t,streamRole:n,threadRuntimeStatus:r}){return n==null?t===`needs_resume`?`needs-resume`:`read-only`:n.role===`follower`?`follower`:r?.type===`active`||e===`inProgress`?`active`:`inactive`}",
-  ].join("");
-}
-
-function syntheticSidebarProjectGroupsBundle() {
-  return [
-    "function AD(e,t,n){let r=MD(e,t),i=ND(r);if(!i){RD.has(e.task.id)||(RD.add(e.task.id),y.warning(`No owner repo found for remote task`,{safe:{taskId:e.task.id},sensitive:{}}));return}let a=i.repoName.toLowerCase();(n.find(e=>hD(e.repositoryData?.ownerRepo,i)&&e.repositoryData?.repoPath===``&&e.repositoryData?.rootFolder?.toLowerCase()===a)??null??n.find(e=>hD(e.repositoryData?.ownerRepo,i))??jD(i,r,n)).threadKeys.push(e.key)}",
   ].join("");
 }
 
@@ -732,7 +723,6 @@ test("remote mobile control feature exposes opt-in main-bundle and webview patch
       "feature:remote-mobile-control:linux-remote-control-enable-for-host-params",
       "feature:remote-mobile-control:linux-remote-control-enablement-bridge",
       "feature:remote-mobile-control:linux-remote-mobile-active-status",
-      "feature:remote-mobile-control:linux-remote-mobile-projectless-remote-task",
     ]);
     assert.deepEqual(descriptors.map((descriptor) => descriptor.phase), [
       "main-bundle",
@@ -740,7 +730,6 @@ test("remote mobile control feature exposes opt-in main-bundle and webview patch
       "main-bundle",
       "main-bundle",
       "extracted-app:post-webview",
-      "webview-asset",
       "webview-asset",
       "webview-asset",
       "webview-asset",
@@ -769,12 +758,12 @@ test("remote mobile control feature exposes opt-in main-bundle and webview patch
       descriptor.id === "feature:remote-mobile-control:linux-remote-control-status-read-guard"
     );
     assert.ok(statusGuardDescriptor);
-    assert.equal(statusGuardDescriptor.pattern.test(CURRENT_REMOTE_CONVERSATION_ASSET), true);
-    assert.equal(statusGuardDescriptor.pattern.test(LATEST_REMOTE_CONVERSATION_ASSET), true);
+    assert.equal(statusGuardDescriptor.pattern.test(CURRENT_REMOTE_CONVERSATION_ASSET), false);
+    assert.equal(statusGuardDescriptor.pattern.test(LATEST_REMOTE_CONVERSATION_ASSET), false);
     assert.equal(statusGuardDescriptor.pattern.test(UNIFIED_REMOTE_CONVERSATION_ASSET), true);
     assert.equal(statusGuardDescriptor.pattern.test(OLD_APP_SERVER_MANAGER_ASSET), false);
     assert.equal(statusGuardDescriptor.pattern.test("app-server-manager-signals-test.js"), false);
-    assert.equal(statusGuardDescriptor.pattern.test(LATEST_PROJECTLESS_REMOTE_TASK_ASSET), false);
+    assert.equal(statusGuardDescriptor.pattern.test(CURRENT_PROJECTLESS_REMOTE_TASK_ASSET), false);
 
     const statusWaitDescriptor = descriptors.find((descriptor) =>
       descriptor.id === "feature:remote-mobile-control:linux-remote-control-status-wait"
@@ -787,35 +776,25 @@ test("remote mobile control feature exposes opt-in main-bundle and webview patch
       descriptor.id === "feature:remote-mobile-control:linux-remote-mobile-conversation-hydration"
     );
     assert.ok(hydrationDescriptor);
-    assert.equal(hydrationDescriptor.pattern.test(CURRENT_REMOTE_CONVERSATION_ASSET), true);
-    assert.equal(hydrationDescriptor.pattern.test(LATEST_REMOTE_CONVERSATION_ASSET), true);
+    assert.equal(hydrationDescriptor.pattern.test(CURRENT_REMOTE_CONVERSATION_ASSET), false);
+    assert.equal(hydrationDescriptor.pattern.test(LATEST_REMOTE_CONVERSATION_ASSET), false);
     assert.equal(hydrationDescriptor.pattern.test(UNIFIED_REMOTE_CONVERSATION_ASSET), true);
     assert.equal(hydrationDescriptor.pattern.test(OLD_APP_SERVER_MANAGER_ASSET), false);
     assert.equal(hydrationDescriptor.pattern.test("app-server-manager-signals-test.js"), false);
     assert.equal(hydrationDescriptor.pattern.test("remote-connections-settings-fixture.js"), false);
-    assert.equal(hydrationDescriptor.pattern.test(LATEST_PROJECTLESS_REMOTE_TASK_ASSET), false);
+    assert.equal(hydrationDescriptor.pattern.test(CURRENT_PROJECTLESS_REMOTE_TASK_ASSET), false);
 
     const loadGateDescriptor = descriptors.find((descriptor) =>
       descriptor.id === "feature:remote-mobile-control:linux-remote-control-load-gate"
     );
     assert.ok(loadGateDescriptor);
-    assert.equal(loadGateDescriptor.pattern.test(CURRENT_REMOTE_CONVERSATION_ASSET), true);
-    assert.equal(loadGateDescriptor.pattern.test(LATEST_REMOTE_CONVERSATION_ASSET), true);
+    assert.equal(loadGateDescriptor.pattern.test(CURRENT_REMOTE_CONVERSATION_ASSET), false);
+    assert.equal(loadGateDescriptor.pattern.test(LATEST_REMOTE_CONVERSATION_ASSET), false);
     assert.equal(loadGateDescriptor.pattern.test(UNIFIED_REMOTE_CONVERSATION_ASSET), true);
     assert.equal(loadGateDescriptor.pattern.test(OLD_REMOTE_CONTROL_GATE_ASSET), false);
     assert.equal(loadGateDescriptor.pattern.test("remote-connection-visibility-test.js"), false);
-    assert.equal(loadGateDescriptor.pattern.test(LATEST_PROJECTLESS_REMOTE_TASK_ASSET), false);
+    assert.equal(loadGateDescriptor.pattern.test(CURRENT_PROJECTLESS_REMOTE_TASK_ASSET), false);
 
-    const projectlessRemoteTaskDescriptor = descriptors.find((descriptor) =>
-      descriptor.id === "feature:remote-mobile-control:linux-remote-mobile-projectless-remote-task"
-    );
-    assert.ok(projectlessRemoteTaskDescriptor);
-    assert.equal(projectlessRemoteTaskDescriptor.pattern.test(CURRENT_PROJECTLESS_REMOTE_TASK_ASSET), true);
-    assert.equal(projectlessRemoteTaskDescriptor.pattern.test(LATEST_PROJECTLESS_REMOTE_TASK_ASSET), true);
-    assert.equal(projectlessRemoteTaskDescriptor.pattern.test(OLD_REMOTE_CONTROL_GATE_ASSET), false);
-    assert.equal(projectlessRemoteTaskDescriptor.pattern.test(CURRENT_REMOTE_CONVERSATION_ASSET), false);
-    assert.equal(projectlessRemoteTaskDescriptor.pattern.test(LATEST_REMOTE_CONVERSATION_ASSET), false);
-    assert.equal(projectlessRemoteTaskDescriptor.pattern.test(UNIFIED_REMOTE_CONVERSATION_ASSET), false);
   });
 });
 
@@ -2156,10 +2135,6 @@ test("remote mobile feature patch report records feature metadata and partial wa
           syntheticAppServerManagerSignalsBundle() +
           syntheticAppServerManagerStatusBundle(),
       );
-      fs.writeFileSync(
-        path.join(assetsDir, CURRENT_PROJECTLESS_REMOTE_TASK_ASSET),
-        syntheticSidebarProjectGroupsBundle(),
-      );
       fs.writeFileSync(path.join(assetsDir, "app-main-test.js"), syntheticAppMainFeatureSyncBundle() + syntheticAppMainEnablementBridgeBundle() + syntheticAppMainActiveStatusBundle());
       fs.writeFileSync(
         path.join(assetsDir, "remote-connections-settings-test.js"),
@@ -2210,19 +2185,6 @@ test("remote mobile feature patch report records feature metadata and partial wa
       fs.rmSync(tempApp, { recursive: true, force: true });
     }
   });
-});
-
-test("Linux remote mobile projectless remote task patch groups tasks without owner repo metadata", () => {
-  const source = syntheticSidebarProjectGroupsBundle();
-  const patched = applyLinuxRemoteMobileProjectlessRemoteTaskPatch(source);
-
-  assert.notEqual(patched, source);
-  assert.match(patched, /codexLinuxRemoteMobileProjectlessRemoteTaskId/);
-  assert.match(patched, /projectId:`remote-task:\$\{codexLinuxRemoteMobileProjectlessRemoteTaskId\}`/);
-  assert.match(patched, /repositoryData:null/);
-  assert.match(patched, /threadKeys:\[\]/);
-  assert.doesNotMatch(patched, /No owner repo found for remote task/);
-  assert.equal(applyLinuxRemoteMobileProjectlessRemoteTaskPatch(patched), patched);
 });
 
 test("Linux remote mobile active-status patch treats active thread status as active without stream role", () => {
@@ -2491,10 +2453,6 @@ test("remote mobile control feature participates in ASAR patching and reports", 
             syntheticCurrentStatusWaitBundle(),
         );
         fs.writeFileSync(
-          path.join(assetsDir, CURRENT_PROJECTLESS_REMOTE_TASK_ASSET),
-          syntheticSidebarProjectGroupsBundle(),
-        );
-        fs.writeFileSync(
           path.join(assetsDir, "remote-control-connections-visibility-test.js"),
           syntheticVisibilityBundle(),
         );
@@ -2567,10 +2525,6 @@ test("remote mobile control feature participates in ASAR patching and reports", 
           path.join(assetsDir, UNIFIED_REMOTE_CONVERSATION_ASSET),
           "utf8",
         );
-        const patchedSidebarProjectGroupsFile = fs.readFileSync(
-          path.join(assetsDir, CURRENT_PROJECTLESS_REMOTE_TASK_ASSET),
-          "utf8",
-        );
         assert.match(patchedFile, /codexLinuxRemoteControlDeviceKeyClient/);
         assert.match(patchedFile, /n\.kind===`local`&&process\.platform!==`linux`/);
         assert.match(patchedAppServerLaunchFile, /codexLinuxRemoteMobileAppServerArgs/);
@@ -2590,7 +2544,6 @@ test("remote mobile control feature participates in ASAR patching and reports", 
         assert.match(patchedSignalsFile, /codexLinuxRemoteMobileThreadRuntimeStatus/);
         assert.match(patchedStatusFile, /codexLinuxRemoteControlShouldReadStatus/);
         assert.match(patchedStatusFile, /codexLinuxRemoteControlStatusWaitMs/);
-        assert.match(patchedSidebarProjectGroupsFile, /codexLinuxRemoteMobileProjectlessRemoteTaskId/);
         assert.match(patchedAppMainFile, /codexLinuxRemoteControlEnablementBridge/);
         assert.match(patchedAppMainFile, /codexLinuxRemoteMobileActiveStatus/);
         assert.ok(
@@ -2692,12 +2645,6 @@ test("remote mobile control feature participates in ASAR patching and reports", 
         assert.ok(
           report.patches.some((patch) =>
             patch.name === "feature:remote-mobile-control:linux-remote-mobile-active-status" &&
-            patch.status === "applied",
-          ),
-        );
-        assert.ok(
-          report.patches.some((patch) =>
-            patch.name === "feature:remote-mobile-control:linux-remote-mobile-projectless-remote-task" &&
             patch.status === "applied",
           ),
         );

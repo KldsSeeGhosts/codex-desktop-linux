@@ -6,6 +6,7 @@ const {
   requiredPatchNamesForProfile,
 } = require("../patches/runner.js");
 const {
+  PATCH_STATUS_APPLIED,
   SUCCESS_STATUSES,
   criticalFailuresFromReport,
   optionalDriftFromReport,
@@ -15,6 +16,7 @@ function usage() {
   return [
     "Usage: validate-patch-report.js <patch-report.json> [--profile upstream-build]",
     "       [--require-enabled-feature FEATURE_ID] [--require-success PATCH_NAME]",
+    "       [--require-applied PATCH_NAME]",
   ].join("\n");
 }
 
@@ -26,6 +28,7 @@ function uniqueStrings(values) {
 function parseArgs(argv) {
   let profile = "upstream-build";
   const requiredEnabledFeatures = [];
+  const requiredAppliedPatches = [];
   const requiredSuccessfulPatches = [];
   const positional = [];
 
@@ -51,6 +54,13 @@ function parseArgs(argv) {
       }
       requiredSuccessfulPatches.push(patchName);
       index += 1;
+    } else if (arg === "--require-applied") {
+      const patchName = argv[index + 1];
+      if (!patchName) {
+        throw new Error(usage());
+      }
+      requiredAppliedPatches.push(patchName);
+      index += 1;
     } else if (arg === "--help" || arg === "-h") {
       console.log(usage());
       process.exit(0);
@@ -69,6 +79,7 @@ function parseArgs(argv) {
     profile,
     reportPath: positional[0],
     requirements: {
+      requiredAppliedPatches: uniqueStrings(requiredAppliedPatches),
       requiredEnabledFeatures: uniqueStrings(requiredEnabledFeatures),
       requiredSuccessfulPatches: uniqueStrings(requiredSuccessfulPatches),
     },
@@ -89,6 +100,7 @@ function validateReport(report, profile, requirements = {}) {
   const patches = Array.isArray(report?.patches) ? report.patches : [];
   const patchesByName = new Map(patches.map((patch) => [patch.name, patch]));
   const enabledFeatures = new Set(Array.isArray(report.enabledFeatures) ? report.enabledFeatures : []);
+  const requiredAppliedPatches = uniqueStrings(requirements.requiredAppliedPatches ?? []);
   const requiredEnabledFeatures = uniqueStrings(requirements.requiredEnabledFeatures ?? []);
   const requiredSuccessfulPatches = uniqueStrings(requirements.requiredSuccessfulPatches ?? []);
   const failures = [];
@@ -122,6 +134,17 @@ function validateReport(report, profile, requirements = {}) {
     }
     if (!SUCCESS_STATUSES.has(patch.status)) {
       failures.push(`${name}: ${patch.status}${patch.reason ? ` (${patch.reason})` : ""}`);
+    }
+  }
+
+  for (const name of requiredAppliedPatches) {
+    const patch = patchesByName.get(name);
+    if (patch == null) {
+      failures.push(`${name}: missing from patch report`);
+      continue;
+    }
+    if (patch.status !== PATCH_STATUS_APPLIED) {
+      failures.push(`${name}: expected applied, got ${patch.status}${patch.reason ? ` (${patch.reason})` : ""}`);
     }
   }
 

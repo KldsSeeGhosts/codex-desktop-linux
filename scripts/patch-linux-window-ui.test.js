@@ -5356,11 +5356,11 @@ test("restarts late-event hydration when a pending queue exists without an in-fl
 });
 
 test("discovers current app-server conversation core Linux webview patches", () => {
-  const currentConversationAsset =
+  const legacyConversationAsset =
     "app-initial~app-main~worktree-init-v2-page~remote-conversation-page~new-thread-panel-page~o~bj5tp28r-Dcs9S3fj.js";
-  const latestConversationAsset =
+  const legacyLatestConversationAsset =
     "app-initial~app-main~new-thread-panel-page~appgen-library-page~hotkey-window-thread-page~ho~glxlkd48-Bty5T9_s.js";
-  const unifiedConversationAsset =
+  const currentConversationAsset =
     "app-initial~app-main~pull-request-code-review~onboarding-page~hotkey-window-thread-page~cha~b76hmflu-y0KJWbm3.js";
   const oldConversationAsset =
     "app-initial~app-main~hotkey-window-thread-page~thread-app-shell-chrome~header~remote-conver~h59fr3q5-Cm3GYhJA.js";
@@ -5375,12 +5375,10 @@ test("discovers current app-server conversation core Linux webview patches", () 
     assert.ok(descriptor);
     assert.equal(descriptor.phase, "webview-asset");
     assert.equal(descriptor.ciPolicy, "optional");
-    assert.match(String(descriptor.pattern), /worktree-init-v2-page/);
-    assert.match(String(descriptor.pattern), /glxlkd48/);
     assert.match(String(descriptor.pattern), /b76hmflu/);
     assert.equal(descriptor.pattern.test(currentConversationAsset), true);
-    assert.equal(descriptor.pattern.test(latestConversationAsset), true);
-    assert.equal(descriptor.pattern.test(unifiedConversationAsset), true);
+    assert.equal(descriptor.pattern.test(legacyConversationAsset), false);
+    assert.equal(descriptor.pattern.test(legacyLatestConversationAsset), false);
     assert.equal(descriptor.pattern.test(oldConversationAsset), false);
     assert.equal(descriptor.pattern.test(projectlessRemoteTaskAsset), false);
     assert.equal(descriptor.pattern.test(latestProjectlessRemoteTaskAsset), false);
@@ -8664,6 +8662,10 @@ test("validateReport can require enabled features and successful patch entries",
   };
 
   const failures = validateReport(report, "feature-probe", {
+    requiredAppliedPatches: [
+      "feature:remote-mobile-control:linux-remote-control-load-gate",
+      "linux-app-server-conversation-hydration",
+    ],
     requiredEnabledFeatures: ["remote-mobile-control", "missing-feature"],
     requiredSuccessfulPatches: [
       "feature:remote-mobile-control:linux-remote-control-load-gate",
@@ -8679,7 +8681,9 @@ test("validateReport can require enabled features and successful patch entries",
     ),
   );
   assert.ok(
-    !failures.some((failure) => failure.startsWith("linux-app-server-conversation-hydration:")),
+    failures.includes(
+      "linux-app-server-conversation-hydration: expected applied, got already-applied",
+    ),
   );
   assert.ok(failures.includes("feature missing-feature: not enabled in patch report"));
   assert.ok(

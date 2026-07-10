@@ -158,13 +158,12 @@ jobs:
           node scripts/ci/validate-patch-report.js "$report_dir/patch-report.json" \
             --profile upstream-build \
             --require-enabled-feature remote-mobile-control \
-            --require-success linux-app-server-conversation-hydration \
-            --require-success linux-completed-item-recovery \
-            --require-success feature:remote-mobile-control:linux-remote-control-load-gate \
+            --require-applied linux-app-server-conversation-hydration \
+            --require-applied linux-completed-item-recovery \
+            --require-applied feature:remote-mobile-control:linux-remote-control-load-gate \
             --require-success feature:remote-mobile-control:linux-remote-mobile-conversation-hydration \
-            --require-success feature:remote-mobile-control:linux-remote-control-status-read-guard \
-            --require-success feature:remote-mobile-control:linux-remote-control-status-wait \
-            --require-success feature:remote-mobile-control:linux-remote-mobile-projectless-remote-task
+            --require-applied feature:remote-mobile-control:linux-remote-control-status-read-guard \
+            --require-applied feature:remote-mobile-control:linux-remote-control-status-wait
 
       - name: Upload upstream DMG metadata artifact
         # The build step now aborts on critical patch failures; keep uploading
