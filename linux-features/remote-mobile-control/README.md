@@ -44,6 +44,8 @@ What it changes:
   desktop can authorize outbound control of another enrolled device.
 - Refreshes the remote Connections settings state every 5 seconds and
   immediately after focus, visibility, online, or resume signals.
+- Registers workspace roots from recent Remote/CLI threads after a mobile
+  device has connected, so those sessions can appear in the Desktop sidebar.
 - Recovers a completed remote stream item when its matching started item is
   missing from the local turn state.
 - Recovers stale remote terminal status when `waitingOnUserInput` remains active
@@ -102,6 +104,7 @@ feature descriptor to appear exactly once in this table.
 | `linux-remote-connections-refresh` | `shared-boundary` | Refreshes the shared Connections list without starting or enabling any host runtime. |
 | `linux-remote-mobile-reasoning-summary-none` | `mobile-host` | Prevents inherited or rollout-forced reasoning summaries from polluting this host's mobile transcript. |
 | `linux-remote-mobile-conversation-hydration` | `mobile-host` | Hydrates and replays mobile notifications for conversations missing locally. |
+| `linux-remote-mobile-workspace-registration` | `mobile-host` | Registers recent local CLI/Remote thread roots so their already-local history is visible in Desktop. |
 | `linux-remote-mobile-completed-item-recovery` | `mobile-host` | Reconciles a completed mobile item with missing local started state. |
 | `linux-remote-terminal-status-recovery` | `mobile-host` | Reconciles stale mobile terminal state with actual pending requests. |
 | `linux-remote-control-status-read-guard` | `shared-boundary` | Sends `remoteControl/status/read` only to the local host, never Remote SSH or remote-control environment hosts. |
@@ -109,6 +112,14 @@ feature descriptor to appear exactly once in this table.
 | `linux-remote-control-enable-for-host-params` | `shared-boundary` | Uses the current enable/disable RPC parameter contract without choosing which host is targeted. |
 | `linux-remote-control-enablement-bridge` | `shared-boundary` | Loads outbound clients while auto-connecting only the remote-control environment owned by this Desktop. |
 | `linux-remote-mobile-active-status` | `mobile-host` | Derives mobile active state from the local thread runtime. |
+
+Workspace registration is local visibility repair, not cloud session replication. Once
+this installation has a connected mobile device, the feature adds valid workspace
+roots from local `source: "cli"` threads updated within the last seven days to
+`electron-saved-workspace-roots`. It preserves roots added elsewhere and ignores
+relative, root, ephemeral, stale, and transient/system paths. Current upstream
+thread metadata reports both Remote and ordinary Codex CLI threads as `cli`, so
+the feature intentionally cannot distinguish those two sources.
 
 Remote SSH behavior is nested inside the shared settings descriptor rather than
 registered as a separate descriptor. `applyLinuxRemoteControlSshInstallActionPatch`
@@ -238,6 +249,11 @@ Known risks:
 - Linux host enrollment or outbound authorization can still fail server-side.
   The official Remote documentation does not list Linux as a supported host
   platform.
+- Upstream currently labels both phone-Remote and terminal Codex CLI threads as
+  `source: cli`. After a mobile device has connected, this feature may therefore
+  add workspace roots from either kind of thread when they were active within the
+  last seven days. Root, relative, ephemeral, temporary, and system paths are
+  excluded.
 - Treat this as experimental account-level remote-control plumbing.
 
 Run the feature tests with:

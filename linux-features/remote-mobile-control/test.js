@@ -35,6 +35,7 @@ const {
   applyLinuxRemoteMobileCompletedItemRecoveryPatch,
   applyLinuxRemoteMobileConversationHydrationPatch,
   applyLinuxRemoteMobileReasoningSummaryPatch,
+  applyLinuxRemoteMobileWorkspaceRegistrationPatch,
   applyLinuxRemoteTerminalStatusRecoveryPatch,
   applyLinuxRemoteControlStatusReadGuardPatch,
   applyLinuxRemoteControlStatusWaitPatch,
@@ -86,6 +87,7 @@ test("remote mobile README assigns every descriptor to one control topology", ()
     ["linux-remote-connections-refresh", "shared-boundary"],
     ["linux-remote-mobile-reasoning-summary-none", "mobile-host"],
     ["linux-remote-mobile-conversation-hydration", "mobile-host"],
+    ["linux-remote-mobile-workspace-registration", "mobile-host"],
     ["linux-remote-mobile-completed-item-recovery", "mobile-host"],
     ["linux-remote-terminal-status-recovery", "mobile-host"],
     ["linux-remote-control-status-read-guard", "shared-boundary"],
@@ -98,6 +100,11 @@ test("remote mobile README assigns every descriptor to one control topology", ()
   assert.equal(documented.size, rows.length, "topology table must not repeat descriptor ids");
   assert.deepEqual([...documented.keys()].sort(), descriptorIds.sort());
   assert.deepEqual([...documented].sort(), [...expected].sort());
+  assert.equal(
+    new Set(remoteMobilePatchDescriptors.map((descriptor) => descriptor.order)).size,
+    remoteMobilePatchDescriptors.length,
+    "remote mobile descriptor order values must be unique",
+  );
   assert.match(readme, /`applyLinuxRemoteControlSshInstallActionPatch`[\s\S]*`remote-ssh`/);
   assert.match(readme, /`applyLinuxRemoteControlSshInstallReleasePatch`[\s\S]*`remote-ssh`/);
   assert.match(readme, /`set-experimental-feature-enablement-for-host`/);
@@ -332,6 +339,22 @@ function syntheticAppServerManagerSignalsBundle() {
   return [
     "function Of({conversationId:e,conversations:t,getWorkspaceBrowserRoot:n,getWorkspaceKind:r,hostId:i,setConversation:a,thread:o,threadsById:s,updateConversationState:c}){let h=o.status??null;if(t.has(e)){c(e,e=>{e.resumeState===`needs_resume`&&(e.threadRuntimeStatus=h)});return}}",
     "class T{onNotification(e,t){let n={method:e,params:t};switch(n.method){case`turn/started`:{let{threadId:e,turn:t}=n.params,r=I(e);if(!this.conversations.get(r)){z.error(`Received turn/started for unknown conversation`,{safe:{conversationId:r},sensitive:{}});break}this.markConversationStreaming(r),this.updateConversationState(r,e=>{});break}case`turn/completed`:{if(this.frameTextDeltaQueue.drainBefore(()=>{this.onNotification(`turn/completed`,n.params)}))break;let{threadId:e,turn:t}=n.params,r=I(e);if(!this.conversations.get(r)){z.error(`Received turn/completed for unknown conversation`,{safe:{conversationId:r},sensitive:{}});break}break}case`item/started`:{let{item:e,threadId:t,turnId:r,startedAtMs:i}=n.params,a=I(t);if(!this.conversations.get(a)){z.error(`Received item/started for unknown conversation`,{safe:{conversationId:a},sensitive:{}});break}this.markConversationStreaming(a),this.updateConversationState(a,t=>{});break}case`item/completed`:{if(this.frameTextDeltaQueue.drainBefore(()=>{this.onNotification(`item/completed`,n.params)}))break;let{item:e,threadId:t,turnId:r,completedAtMs:i}=n.params,a=I(t);if(!this.conversations.get(a)){z.error(`Received item/completed for unknown conversation`,{safe:{conversationId:a},sensitive:{}});break}this.updateConversationState(a,t=>{});break}}}}",
+  ].join("");
+}
+
+function syntheticWorkspaceRegistrationBundle() {
+  return [
+    "var Q={messages:[],dispatchMessage(e,t){this.messages.push({type:e,payload:t})}};",
+    "Q.dispatchMessage(`electron-update-workspace-root-options`,{roots:[]});Q.messages=[];",
+    "class W{constructor(){this.hostId=`local`,this.state={},this.threadStore=new class{constructor(){this.items=[]}async refreshRecentConversations(){}}}",
+    "getHostId(){return this.hostId}",
+    "async refreshRecentConversations(e={}){await this.threadStore.refreshRecentConversations(e)}",
+    "getRecentConversations(){return this.threadStore.items}",
+    "async fetchFromHost(e,{params:t}){return{value:this.state[t.key]}}",
+    "upsertConversationFromThread(e){return e}",
+    "broadcastConversationSnapshot(){}",
+    "hydrate(e){this.upsertConversationFromThread(e),this.codexLinuxRemoteMobilePendingNotifications?.delete(e.id)}",
+    "onNotification(e,t){let n={method:e,params:t};switch(n.method){case`thread/started`:{let{thread:e}=n.params,t=this.upsertConversationFromThread(e);this.broadcastConversationSnapshot(t);break}}}}",
   ].join("");
 }
 
@@ -978,6 +1001,7 @@ test("remote mobile control feature exposes opt-in main-bundle and webview patch
       "feature:remote-mobile-control:linux-remote-connections-refresh",
       "feature:remote-mobile-control:linux-remote-mobile-reasoning-summary-none",
       "feature:remote-mobile-control:linux-remote-mobile-conversation-hydration",
+      "feature:remote-mobile-control:linux-remote-mobile-workspace-registration",
       "feature:remote-mobile-control:linux-remote-mobile-completed-item-recovery",
       "feature:remote-mobile-control:linux-remote-terminal-status-recovery",
       "feature:remote-mobile-control:linux-remote-control-status-read-guard",
@@ -990,6 +1014,7 @@ test("remote mobile control feature exposes opt-in main-bundle and webview patch
       "main-bundle",
       "main-bundle",
       "extracted-app:post-webview",
+      "webview-asset",
       "webview-asset",
       "webview-asset",
       "webview-asset",
@@ -1085,6 +1110,14 @@ test("remote mobile control feature exposes opt-in main-bundle and webview patch
     assert.equal(hydrationDescriptor.pattern.test("app-server-manager-signals-test.js"), false);
     assert.equal(hydrationDescriptor.pattern.test("remote-connections-settings-fixture.js"), false);
     assert.equal(hydrationDescriptor.pattern.test(CURRENT_REMOTE_RUNTIME_ASSET), true);
+
+    const workspaceRegistrationDescriptor = descriptors.find((descriptor) =>
+      descriptor.id === "feature:remote-mobile-control:linux-remote-mobile-workspace-registration"
+    );
+    assert.ok(workspaceRegistrationDescriptor);
+    assert.equal(workspaceRegistrationDescriptor.pattern.test(OLD_REMOTE_RUNTIME_ASSET), false);
+    assert.equal(workspaceRegistrationDescriptor.pattern.test(CURRENT_REMOTE_RUNTIME_ASSET), true);
+    assert.equal(workspaceRegistrationDescriptor.pattern.test(OLD_APP_SERVER_MANAGER_ASSET), false);
 
     const completedItemDescriptor = descriptors.find((descriptor) =>
       descriptor.id === "feature:remote-mobile-control:linux-remote-mobile-completed-item-recovery"
@@ -1754,6 +1787,131 @@ test("Linux remote mobile Chrome bridge patch warns when browser-client needles 
 
   assert.equal(result, source);
   assert.ok(warnings.some((warning) => warning.includes("backend allowlist needles")));
+});
+
+test("Linux remote mobile workspace registration surfaces recent CLI and Remote roots", async () => {
+  const source = syntheticWorkspaceRegistrationBundle();
+  const patched = applyLinuxRemoteMobileWorkspaceRegistrationPatch(source);
+
+  assert.notEqual(patched, source);
+  assert.match(patched, /codexLinuxRemoteWorkspaceRegistration/);
+  assert.match(
+    patched,
+    /electron-update-workspace-root-options`,\{roots:Array\.from\(r\)\}/,
+  );
+  assert.match(
+    patched,
+    /this\.upsertConversationFromThread\(e\),this\.codexLinuxRegisterRemoteWorkspaceRoots\(\[e\]\),this\.codexLinuxRemoteMobilePendingNotifications/,
+  );
+  assert.equal(applyLinuxRemoteMobileWorkspaceRegistrationPatch(patched), patched);
+
+  const context = { module: { exports: {} } };
+  vm.runInNewContext(`${patched};module.exports={Manager:W,dispatcher:Q};`, context);
+  const manager = new context.module.exports.Manager();
+  const now = Date.now();
+  manager.state["codex-mobile-has-connected-device"] = true;
+  manager.state["electron-saved-workspace-roots"] = ["/projects/existing"];
+  manager.threadStore.items = [
+    { source: "cli", cwd: "/projects/remote", updatedAt: Math.floor(now / 1000) },
+    { source: "cli", cwd: "/projects/cli-ms", updatedAt: now },
+    { source: "cli", cwd: "/projects/stale", updatedAt: Math.floor((now - 8 * 864e5) / 1000) },
+    { source: "vscode", cwd: "/projects/editor", updatedAt: Math.floor(now / 1000) },
+    { source: "cli", cwd: "/projects/ephemeral", ephemeral: true, updatedAt: Math.floor(now / 1000) },
+    { source: "cli", cwd: "relative/project", updatedAt: Math.floor(now / 1000) },
+    { source: "cli", cwd: "/", updatedAt: Math.floor(now / 1000) },
+    { source: "cli", cwd: "/tmp/session", updatedAt: Math.floor(now / 1000) },
+    { source: "cli", cwd: "/proc/session", updatedAt: Math.floor(now / 1000) },
+    { source: "cli", cwd: "/projects/no-timestamp" },
+  ];
+
+  await manager.refreshRecentConversations();
+  await manager.codexLinuxRemoteWorkspaceRegistrationPromise;
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(context.module.exports.dispatcher.messages)),
+    [{
+      type: "electron-update-workspace-root-options",
+      payload: {
+        roots: ["/projects/existing", "/projects/remote", "/projects/cli-ms"],
+      },
+    }],
+  );
+});
+
+test("Linux remote mobile workspace registration is local and pairing scoped", async () => {
+  const patched = applyLinuxRemoteMobileWorkspaceRegistrationPatch(
+    syntheticWorkspaceRegistrationBundle(),
+  );
+  const context = { module: { exports: {} } };
+  vm.runInNewContext(`${patched};module.exports={Manager:W,dispatcher:Q};`, context);
+  const recentThread = {
+    source: "cli",
+    cwd: "/projects/remote",
+    updatedAt: Math.floor(Date.now() / 1000),
+  };
+
+  const unpaired = new context.module.exports.Manager();
+  unpaired.state["electron-saved-workspace-roots"] = [];
+  unpaired.threadStore.items = [recentThread];
+  await unpaired.refreshRecentConversations();
+  await unpaired.codexLinuxRemoteWorkspaceRegistrationPromise;
+
+  const remoteHost = new context.module.exports.Manager();
+  remoteHost.hostId = "remote-host";
+  remoteHost.state["codex-mobile-has-connected-device"] = true;
+  remoteHost.state["electron-saved-workspace-roots"] = [];
+  remoteHost.threadStore.items = [recentThread];
+  await remoteHost.refreshRecentConversations();
+  await remoteHost.codexLinuxRemoteWorkspaceRegistrationPromise;
+
+  assert.equal(context.module.exports.dispatcher.messages.length, 0);
+});
+
+test("Linux remote mobile workspace registration handles started and hydrated threads", async () => {
+  const patched = applyLinuxRemoteMobileWorkspaceRegistrationPatch(
+    syntheticWorkspaceRegistrationBundle(),
+  );
+  const context = { module: { exports: {} } };
+  vm.runInNewContext(`${patched};module.exports={Manager:W,dispatcher:Q};`, context);
+  const manager = new context.module.exports.Manager();
+  const now = Math.floor(Date.now() / 1000);
+  manager.state["codex-mobile-has-connected-device"] = true;
+  manager.state["electron-saved-workspace-roots"] = ["/projects/existing"];
+
+  manager.onNotification("thread/started", {
+    thread: { source: "cli", cwd: "/projects/started", updatedAt: now },
+  });
+  await manager.codexLinuxRemoteWorkspaceRegistrationPromise;
+
+  manager.state["electron-saved-workspace-roots"] = [
+    "/projects/existing",
+    "/projects/external",
+    "/projects/started",
+  ];
+  manager.hydrate({ id: "thread-hydrated", source: "cli", cwd: "/projects/hydrated", updatedAt: now });
+  await manager.codexLinuxRemoteWorkspaceRegistrationPromise;
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(
+      context.module.exports.dispatcher.messages.map((message) => message.payload.roots),
+    )),
+    [
+      ["/projects/existing", "/projects/started"],
+      ["/projects/existing", "/projects/external", "/projects/started", "/projects/hydrated"],
+    ],
+  );
+});
+
+test("Linux remote mobile workspace registration fails soft on upstream drift", () => {
+  const source = syntheticWorkspaceRegistrationBundle().replace(
+    "Q.dispatchMessage(`electron-update-workspace-root-options`,{roots:[]});Q.messages=[];",
+    "Q.messages=[];",
+  );
+  const { result, warnings } = captureWarnings(() =>
+    applyLinuxRemoteMobileWorkspaceRegistrationPatch(source));
+
+  assert.equal(result, source);
+  assert.ok(warnings.some((warning) => warning.includes("workspace-root update dispatcher")));
 });
 
 test("Linux remote mobile conversation hydration patch handles current app-server signal shape", () => {
@@ -2542,7 +2700,8 @@ test("remote mobile feature patch report records feature metadata and partial wa
       fs.writeFileSync(path.join(assetsDir, "app-test.png"), "");
       fs.writeFileSync(
         path.join(assetsDir, CURRENT_REMOTE_RUNTIME_ASSET),
-        syntheticAppServerManagerSignalsBundle() +
+        syntheticWorkspaceRegistrationBundle() +
+          syntheticAppServerManagerSignalsBundle() +
           syntheticAppServerManagerStatusBundle() +
           syntheticCompletedItemRecoveryBundle() +
           syntheticRemoteTerminalStatusBundle(),
@@ -2599,6 +2758,13 @@ test("remote mobile feature patch report records feature metadata and partial wa
       );
       assert.equal(featureHydrationPatch.sourceKind, "feature");
       assert.equal(featureHydrationPatch.status, "applied");
+
+      const workspaceRegistrationPatch = report.patches.find(
+        (patch) => patch.name === "feature:remote-mobile-control:linux-remote-mobile-workspace-registration",
+      );
+      assert.equal(workspaceRegistrationPatch.sourceKind, "feature");
+      assert.equal(workspaceRegistrationPatch.featureId, "remote-mobile-control");
+      assert.equal(workspaceRegistrationPatch.status, "applied");
 
       const completedItemPatch = report.patches.find(
         (patch) => patch.name === "feature:remote-mobile-control:linux-remote-mobile-completed-item-recovery",
@@ -3231,6 +3397,7 @@ test("remote mobile control feature participates in ASAR patching and reports", 
         fs.writeFileSync(
           path.join(assetsDir, CURRENT_REMOTE_RUNTIME_ASSET),
           syntheticRemoteConnectionVisibilityBundle() +
+            syntheticWorkspaceRegistrationBundle() +
             syntheticAppServerManagerSignalsBundle() +
             syntheticAppServerManagerStatusBundle() +
             syntheticCurrentStatusWaitBundle() +
@@ -3399,6 +3566,12 @@ test("remote mobile control feature participates in ASAR patching and reports", 
         assert.ok(
           report.patches.some((patch) =>
             patch.name === "feature:remote-mobile-control:linux-remote-mobile-conversation-hydration" &&
+            patch.status === "applied",
+          ),
+        );
+        assert.ok(
+          report.patches.some((patch) =>
+            patch.name === "feature:remote-mobile-control:linux-remote-mobile-workspace-registration" &&
             patch.status === "applied",
           ),
         );

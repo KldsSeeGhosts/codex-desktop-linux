@@ -38,6 +38,7 @@ const REMOTE_MOBILE_NOTIFICATION_QUEUE_MARKER = "codexLinuxRemoteMobileNotificat
 const REMOTE_MOBILE_IN_FLIGHT_HYDRATION_MARKER = "codexLinuxRemoteMobileHydrationInFlight";
 const REMOTE_MOBILE_LATE_EVENT_HYDRATION_MARKER = "codexLinuxRemoteMobileHydrateLateEvent";
 const REMOTE_MOBILE_REASONING_SUMMARY_MARKER = "codexLinuxRemoteMobileReasoningSummaryNone";
+const REMOTE_MOBILE_WORKSPACE_REGISTRATION_MARKER = "codexLinuxRemoteWorkspaceRegistration";
 const REMOTE_MOBILE_COMPLETED_ITEM_MARKER = "codexLinuxCompletedItemExists=";
 const REMOTE_CONTROL_ENABLEMENT_BRIDGE_MARKER = "codexLinuxRemoteControlEnablementBridge";
 const REMOTE_CONTROL_ENABLE_FOR_HOST_PARAMS_MARKER = "codexLinuxRemoteControlEnableForHostParams";
@@ -1005,6 +1006,82 @@ function applyLinuxRemoteMobileConversationHydrationPatch(source) {
   return patched;
 }
 
+function applyLinuxRemoteMobileWorkspaceRegistrationPatch(source) {
+  if (source.includes(REMOTE_MOBILE_WORKSPACE_REGISTRATION_MARKER)) {
+    return source;
+  }
+
+  const dispatcherMatch = source.match(
+    /([A-Za-z_$][\w$]*)\.dispatchMessage\(`electron-update-workspace-root-options`,\{roots:/u,
+  );
+  if (dispatcherMatch == null) {
+    console.warn(
+      "WARN: Could not find workspace-root update dispatcher - skipping remote mobile workspace registration patch",
+    );
+    return source;
+  }
+  const dispatcherVar = dispatcherMatch[1];
+
+  const managerAnchor = "this.threadStore=new";
+  const managerStart = source.indexOf(managerAnchor);
+  const hostGetterNeedle = "}getHostId(){return this.hostId}";
+  const hostGetterIndex = source.indexOf(hostGetterNeedle, managerStart);
+  if (managerStart < 0 || hostGetterIndex < 0) {
+    console.warn(
+      "WARN: Could not find app-server manager workspace registration insertion point - skipping remote mobile workspace registration patch",
+    );
+    return source;
+  }
+
+  const refreshNeedle =
+    "async refreshRecentConversations(e={}){await this.threadStore.refreshRecentConversations(e)}";
+  if (!source.includes(refreshNeedle)) {
+    console.warn(
+      "WARN: Could not find recent conversation refresh method - skipping remote mobile workspace registration patch",
+    );
+    return source;
+  }
+
+  const threadStartedPattern =
+    /case`thread\/started`:\{let\{thread:([A-Za-z_$][\w$]*)\}=([A-Za-z_$][\w$]*)\.params,([A-Za-z_$][\w$]*)=this\.upsertConversationFromThread\(\1\);/u;
+  if (!threadStartedPattern.test(source)) {
+    console.warn(
+      "WARN: Could not find thread/started workspace registration point - skipping remote mobile workspace registration patch",
+    );
+    return source;
+  }
+
+  const method =
+    `codexLinuxRemoteWorkspaceRegistrationPromise=Promise.resolve();` +
+    `codexLinuxRegisterRemoteWorkspaceRoots(e){let t=Array.isArray(e)?e:[e];` +
+    `return this.codexLinuxRemoteWorkspaceRegistrationPromise=this.codexLinuxRemoteWorkspaceRegistrationPromise.catch(()=>{}).then(async()=>{` +
+    `if(this.hostId!==\`local\`||t.length===0)return;` +
+    `let{value:e}=await this.fetchFromHost(\`get-global-state\`,{params:{key:\`codex-mobile-has-connected-device\`}});if(e!==!0)return;` +
+    `let{value:n}=await this.fetchFromHost(\`get-global-state\`,{params:{key:\`electron-saved-workspace-roots\`}}),r=new Set(Array.isArray(n)?n.filter(e=>typeof e===\`string\`):[]),i=Date.now()-6048e5,a=!1;` +
+    `for(let e of t){if(e?.source!==\`cli\`||e?.ephemeral===!0)continue;let t=e?.cwd;if(typeof t!==\`string\`||!t.startsWith(\`/\`)||t===\`/\`||t.includes(\`\0\`)||t===\`/tmp\`||t.startsWith(\`/tmp/\`)||t===\`/var/tmp\`||t.startsWith(\`/var/tmp/\`)||t===\`/run\`||t.startsWith(\`/run/\`)||t===\`/proc\`||t.startsWith(\`/proc/\`)||t===\`/sys\`||t.startsWith(\`/sys/\`)||t===\`/dev\`||t.startsWith(\`/dev/\`))continue;let n=Number(e?.updatedAt??e?.createdAt);if(!Number.isFinite(n)||n<=0||(n<1e12?n*1e3:n)<i)continue;r.has(t)||(r.add(t),a=!0)}` +
+    `a&&${dispatcherVar}.dispatchMessage(\`electron-update-workspace-root-options\`,{roots:Array.from(r)})}).catch(()=>{})}` +
+    `/*${REMOTE_MOBILE_WORKSPACE_REGISTRATION_MARKER}*/`;
+
+  let patched =
+    source.slice(0, hostGetterIndex + 1) +
+    method +
+    source.slice(hostGetterIndex + 1);
+  patched = patched.replace(
+    refreshNeedle,
+    `${refreshNeedle.slice(0, -1)},this.codexLinuxRegisterRemoteWorkspaceRoots(this.getRecentConversations())}`,
+  );
+  patched = patched.replace(
+    threadStartedPattern,
+    (_match, threadVar, notificationVar, conversationVar) =>
+      `case\`thread/started\`:{let{thread:${threadVar}}=${notificationVar}.params,${conversationVar}=this.upsertConversationFromThread(${threadVar});this.codexLinuxRegisterRemoteWorkspaceRoots([${threadVar}]),`,
+  );
+  patched = patched.replace(
+    /this\.upsertConversationFromThread\(([A-Za-z_$][\w$]*)\),(this\.codexLinuxRemoteMobilePendingNotifications)/gu,
+    "this.upsertConversationFromThread($1),this.codexLinuxRegisterRemoteWorkspaceRoots([$1]),$2",
+  );
+  return patched;
+}
+
 function applyLinuxRemoteMobileCompletedItemRecoveryPatch(source) {
   if (source.includes(REMOTE_MOBILE_COMPLETED_ITEM_MARKER)) {
     return source;
@@ -1501,10 +1578,20 @@ module.exports = [
     apply: applyLinuxRemoteMobileConversationHydrationPatch,
   },
   {
-    id: "linux-remote-mobile-completed-item-recovery",
+    id: "linux-remote-mobile-workspace-registration",
     phase: "webview-asset",
     pattern: REMOTE_MOBILE_RUNTIME_ASSET_PATTERN,
     order: 20_151,
+    ciPolicy: "optional",
+    missingDescription: "app-server manager signals bundle",
+    skipDescription: "Linux remote-mobile workspace registration patch",
+    apply: applyLinuxRemoteMobileWorkspaceRegistrationPatch,
+  },
+  {
+    id: "linux-remote-mobile-completed-item-recovery",
+    phase: "webview-asset",
+    pattern: REMOTE_MOBILE_RUNTIME_ASSET_PATTERN,
+    order: 20_152,
     ciPolicy: "optional",
     missingDescription: "app-server conversation manager bundle",
     skipDescription: "Linux remote-mobile completed item recovery patch",
@@ -1514,7 +1601,7 @@ module.exports = [
     id: "linux-remote-terminal-status-recovery",
     phase: "webview-asset",
     pattern: REMOTE_MOBILE_RUNTIME_ASSET_PATTERN,
-    order: 20_152,
+    order: 20_153,
     ciPolicy: "optional",
     missingDescription: "app-server conversation manager bundle",
     skipDescription: "Linux remote terminal status recovery patch",
@@ -1524,7 +1611,7 @@ module.exports = [
     id: "linux-remote-control-status-read-guard",
     phase: "webview-asset",
     pattern: REMOTE_MOBILE_RUNTIME_ASSET_PATTERN,
-    order: 20_153,
+    order: 20_154,
     ciPolicy: "optional",
     missingDescription: "app-server manager signals bundle",
     skipDescription: "Linux remote-control status read guard patch",
@@ -1534,7 +1621,7 @@ module.exports = [
     id: "linux-remote-control-status-wait",
     phase: "webview-asset",
     pattern: REMOTE_MOBILE_RUNTIME_ASSET_PATTERN,
-    order: 20_154,
+    order: 20_155,
     ciPolicy: "optional",
     missingDescription: "app-server manager signals bundle",
     skipDescription: "Linux remote-control status wait patch",
@@ -1544,7 +1631,7 @@ module.exports = [
     id: "linux-remote-control-enable-for-host-params",
     phase: "webview-asset",
     pattern: REMOTE_CONTROL_APP_MAIN_PAGE_ASSET_PATTERN,
-    order: 20_155,
+    order: 20_156,
     ciPolicy: "optional",
     missingDescription: "app main remote-control host toggle bundle",
     skipDescription: "Linux remote-control host toggle params patch",
@@ -1554,7 +1641,7 @@ module.exports = [
     id: "linux-remote-control-enablement-bridge",
     phase: "webview-asset",
     pattern: REMOTE_CONTROL_APP_MAIN_PAGE_ASSET_PATTERN,
-    order: 20_156,
+    order: 20_157,
     ciPolicy: "optional",
     missingDescription: "app main bundle",
     skipDescription: "Linux remote-control enablement bridge patch",
@@ -1580,6 +1667,8 @@ module.exports.applyLinuxRemoteMobileCompletedItemRecoveryPatch =
   applyLinuxRemoteMobileCompletedItemRecoveryPatch;
 module.exports.applyLinuxRemoteMobileConversationHydrationPatch = applyLinuxRemoteMobileConversationHydrationPatch;
 module.exports.applyLinuxRemoteMobileReasoningSummaryPatch = applyLinuxRemoteMobileReasoningSummaryPatch;
+module.exports.applyLinuxRemoteMobileWorkspaceRegistrationPatch =
+  applyLinuxRemoteMobileWorkspaceRegistrationPatch;
 module.exports.applyLinuxRemoteTerminalStatusRecoveryPatch = applyLinuxRemoteTerminalStatusRecoveryPatch;
 module.exports.applyLinuxRemoteControlStatusReadGuardPatch = applyLinuxRemoteControlStatusReadGuardPatch;
 module.exports.applyLinuxRemoteControlStatusWaitPatch = applyLinuxRemoteControlStatusWaitPatch;
