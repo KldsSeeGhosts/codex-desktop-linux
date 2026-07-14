@@ -7,7 +7,9 @@ The upstream desktop UI can apply a separate Statsig `available_models`
 allowlist after `model/list` succeeds. That allowlist is useful for ChatGPT
 rollouts, but it can hide models exposed by an OpenAI-compatible provider even
 when the provider marks them as visible. This feature bypasses that extra
-allowlist only when the active host reports `authMethod = "apikey"`.
+allowlist when the active host reports `authMethod = "apikey"` or has no
+account auth method because a custom provider does not require OpenAI
+authentication.
 
 ## Enable
 
@@ -29,7 +31,8 @@ Then rebuild the app:
 
 ## Behavior
 
-- API-key hosts show every `model/list` entry whose `hidden` field is false.
+- API-key hosts and no-account custom-provider hosts show every `model/list`
+  entry whose `hidden` field is false.
 - ChatGPT, Copilot, and Amazon Bedrock hosts keep the upstream filtering rules.
 - Models that the CLI marks as hidden remain hidden.
 - The feature does not grant model access. The configured provider must accept

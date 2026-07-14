@@ -114,7 +114,7 @@ test("API-key hosts use visible CLI models instead of the desktop allowlist", ()
   const patched = applyPatchTwice(applyApiKeyModelVisibilityPatch, modelCatalogFixture());
   const catalog = evaluateCatalog(patched, "apikey");
 
-  assert.match(patched, /e!==`apikey`\/\*codexLinuxApiKeyModelVisibility\*\//);
+  assert.match(patched, /e!==`apikey`&&e!=null\/\*codexLinuxApiKeyModelVisibility\*\//);
   assert.deepEqual(modelNames(catalog), [
     "gpt-5.6-sol",
     "gpt-5.6-terra",
@@ -122,6 +122,17 @@ test("API-key hosts use visible CLI models instead of the desktop allowlist", ()
     "gpt-5.5",
   ]);
   assert.equal(catalog.defaultModel.model, "gpt-5.6-sol");
+});
+
+test("custom-provider hosts without an account auth method use visible CLI models", () => {
+  const patched = applyApiKeyModelVisibilityPatch(modelCatalogFixture());
+
+  assert.deepEqual(modelNames(evaluateCatalog(patched, null)), [
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gpt-5.5",
+  ]);
 });
 
 test("API-key hosts still exclude models marked hidden by the CLI", () => {

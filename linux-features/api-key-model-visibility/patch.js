@@ -21,14 +21,15 @@ function applyApiKeyModelVisibilityPatch(source) {
       `defaultModel:${JS_IDENT},enabledReasoningEfforts:${JS_IDENT},` +
       `includeUltraReasoningEffort:${JS_IDENT},models:${JS_IDENT},` +
       `useHiddenModels:(${JS_IDENT})\\}\\)\\{let[\\s\\S]{0,600}?[,;]${JS_IDENT}=` +
-      `\\2&&\\1!==\\\`amazonBedrock\\\`&&\\1!==\\\`apikey\\\`/\\*${PATCH_MARKER}\\*/(?=[,;])`,
+      `\\2&&\\1!==\\\`amazonBedrock\\\`&&\\1!==\\\`apikey\\\`&&\\1!=null/` +
+      `\\*${PATCH_MARKER}\\*/(?=[,;])`,
   );
 
   const patched = source.replace(
     modelVisibilityPattern,
     (_match, prefix, authMethodVar, useHiddenModelsVar) =>
       `${prefix}${useHiddenModelsVar}&&${authMethodVar}!==\`amazonBedrock\`&&` +
-      `${authMethodVar}!==\`apikey\`/*${PATCH_MARKER}*/`,
+      `${authMethodVar}!==\`apikey\`&&${authMethodVar}!=null/*${PATCH_MARKER}*/`,
   );
 
   if (patched !== source) {
