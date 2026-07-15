@@ -244,6 +244,24 @@ fn preflight_with_version_timeout(
         ));
     }
 
+    let cli_install_kind = classify_cli_install(&selected_cli_path);
+    if matches!(cli_install_kind, CliInstallKind::Homebrew)
+        && state.cli_status != CliStatus::UpToDate
+    {
+        state.cli_status = CliStatus::UpdateRequired;
+        state.cli_error_message = Some(format!(
+            "This Codex CLI appears to be installed through Homebrew at {}. Update it with Homebrew; ChatGPT Desktop will not replace it with an npm-managed install.",
+            cli_path.display()
+        ));
+        persist_state(paths, state)?;
+        return Ok(preflight_outcome_from_state(
+            cli_path,
+            installed_version,
+            state,
+            false,
+        ));
+    }
+
     let latest_version = match official_latest_version {
         Some(version) => version,
         None => {
@@ -288,7 +306,7 @@ fn preflight_with_version_timeout(
 
     state.cli_status = CliStatus::Updating;
     persist_state(paths, state)?;
-    if let Err(error) = update_existing_cli(&selected_cli_path, &latest_version) {
+    if let Err(error) = update_existing_cli(&cli_install_kind, &latest_version) {
         persist_cli_failure(state, paths, &error)?;
         return Err(error);
     }
@@ -579,6 +597,9 @@ fn post_install_cli_path_candidates(explicit_path: Option<&Path>) -> Vec<PathBuf
 fn known_cli_locations() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     let home = std::env::var_os("HOME").map(PathBuf::from);
+    if let Some(homebrew_prefix) = std::env::var_os("HOMEBREW_PREFIX").map(PathBuf::from) {
+        candidates.push(homebrew_prefix.join("bin/codex"));
+    }
     if let Some(active_dir) = std::env::var_os("FNM_MULTISHELL_PATH").map(PathBuf::from) {
         candidates.push(active_dir.join("bin/codex"));
     }
@@ -591,9 +612,11 @@ fn known_cli_locations() -> Vec<PathBuf> {
         candidates.push(home.join(".codex-cli-npm/bin/codex"));
         candidates.push(home.join(".npm-global/bin/codex"));
         candidates.push(home.join(".local/share/pnpm/codex"));
+        candidates.push(home.join(".linuxbrew/bin/codex"));
         candidates.push(home.join(".local/bin/codex"));
     }
     if include_system_cli_locations() {
+        candidates.push(PathBuf::from("/home/linuxbrew/.linuxbrew/bin/codex"));
         candidates.push(PathBuf::from("/usr/local/bin/codex"));
         candidates.push(PathBuf::from("/usr/bin/codex"));
     }
@@ -1233,6 +1256,7 @@ fn signal_process_group(process_group: i32, signal: i32) {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CliInstallKind {
     Standalone(StandaloneCliInstall),
+    Homebrew,
     Npm,
 }
 
@@ -1248,17 +1272,46 @@ impl StandaloneCliInstall {
     }
 }
 
-fn update_existing_cli(cli_path: &Path, latest_version: &str) -> Result<()> {
-    match classify_cli_install(cli_path) {
-        CliInstallKind::Standalone(install) => update_standalone_cli(&install, latest_version),
+fn update_existing_cli(install_kind: &CliInstallKind, latest_version: &str) -> Result<()> {
+    match install_kind {
+        CliInstallKind::Standalone(install) => update_standalone_cli(install, latest_version),
+        CliInstallKind::Homebrew => {
+            anyhow::bail!("Homebrew-managed Codex CLI installs must be updated with Homebrew")
+        }
         CliInstallKind::Npm => install_latest_cli(latest_version),
     }
 }
 
 fn classify_cli_install(cli_path: &Path) -> CliInstallKind {
-    standalone_cli_install(cli_path)
-        .map(CliInstallKind::Standalone)
-        .unwrap_or(CliInstallKind::Npm)
+    if let Some(install) = standalone_cli_install(cli_path) {
+        return CliInstallKind::Standalone(install);
+    }
+    if homebrew_cli_install(cli_path) {
+        return CliInstallKind::Homebrew;
+    }
+    CliInstallKind::Npm
+}
+
+fn homebrew_cli_install(cli_path: &Path) -> bool {
+    let canonical_path = fs::canonicalize(cli_path).ok();
+    let homebrew_prefix = std::env::var_os("HOMEBREW_PREFIX")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+
+    homebrew_prefix.as_deref().is_some_and(|prefix| {
+        cli_path.starts_with(prefix)
+            || canonical_path
+                .as_deref()
+                .is_some_and(|path| path.starts_with(prefix))
+    }) || path_has_component(cli_path, ".linuxbrew")
+        || canonical_path
+            .as_deref()
+            .is_some_and(|path| path_has_component(path, ".linuxbrew"))
+}
+
+fn path_has_component(path: &Path, name: &str) -> bool {
+    path.components()
+        .any(|component| component.as_os_str() == OsStr::new(name))
 }
 
 fn standalone_cli_install(cli_path: &Path) -> Option<StandaloneCliInstall> {
@@ -1881,12 +1934,16 @@ fn prepare_safe_npm_prefix(prefix: &Path) -> Result<()> {
         prefix.display()
     );
     let euid = unsafe { libc::geteuid() };
-    if metadata.uid() == euid {
-        let mode = metadata.permissions().mode();
-        if mode & 0o022 != 0 {
-            fs::set_permissions(prefix, fs::Permissions::from_mode(mode & !0o022))
-                .with_context(|| format!("Failed to secure npm prefix {}", prefix.display()))?;
-        }
+    anyhow::ensure!(
+        metadata.uid() == euid,
+        "Dedicated npm prefix {} is not owned by the current user",
+        prefix.display()
+    );
+
+    let mode = metadata.permissions().mode();
+    if mode & 0o022 != 0 {
+        fs::set_permissions(prefix, fs::Permissions::from_mode(mode & !0o022))
+            .with_context(|| format!("Failed to secure npm prefix {}", prefix.display()))?;
     }
     Ok(())
 }
@@ -2317,6 +2374,7 @@ mod tests {
             "FNM_DIR",
             "FNM_MULTISHELL_PATH",
             "CODEX_CLI_PATH",
+            "HOMEBREW_PREFIX",
             "CODEX_UPDATE_MANAGER_SKIP_SYSTEM_CLI_LOOKUP",
             "DECOY_NPM_LOG",
             "FAKE_CODEX_ENTRYPOINT",
@@ -2328,6 +2386,7 @@ mod tests {
         std::env::set_var("HOME", home);
         std::env::set_var("PATH", std::env::join_paths(path_entries)?);
         std::env::remove_var("NVM_DIR");
+        std::env::remove_var("HOMEBREW_PREFIX");
         std::env::remove_var("CODEX_CLI_PATH");
         std::env::set_var("CODEX_UPDATE_MANAGER_SKIP_SYSTEM_CLI_LOOKUP", "1");
         Ok(restore)
@@ -3134,6 +3193,48 @@ exit 1
     }
 
     #[test]
+    fn preflight_reports_homebrew_cli_update_without_running_npm_install() -> Result<()> {
+        let _env_guard = env_lock();
+        let temp = tempdir()?;
+        let paths = test_runtime_paths(temp.path());
+        paths.ensure_dirs()?;
+
+        let home = temp.path().join("home");
+        let tool_bin = temp.path().join("tool-bin");
+        let brew_bin = home.join(".linuxbrew/bin");
+        fs::create_dir_all(&brew_bin)?;
+        fs::create_dir_all(&tool_bin)?;
+
+        let codex_path = brew_bin.join("codex");
+        write_executable_script(
+            &codex_path,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ] || [ \"$1\" = \"version\" ]; then\n  echo 'codex-cli v0.42.0'\n  exit 0\nfi\nexit 1\n",
+        )?;
+
+        let npm_install_log = temp.path().join("npm-install.log");
+        write_fake_latest_npm(&tool_bin, "0.42.1", &npm_install_log)?;
+        let _restore_env = configure_cli_test_env(&home, [tool_bin])?;
+
+        let mut state = PersistedState::new(true);
+        let outcome = preflight(&mut state, &paths, Some(codex_path.clone()), false)?;
+
+        assert!(!outcome.updated);
+        assert_eq!(outcome.cli_path, codex_path);
+        assert_eq!(outcome.installed_version, "0.42.0");
+        assert_eq!(outcome.official_latest_version.as_deref(), Some("0.42.1"));
+        assert_eq!(outcome.package_manager_latest_version, None);
+        assert_eq!(state.cli_status, CliStatus::UpdateRequired);
+        let message = state
+            .cli_error_message
+            .as_deref()
+            .expect("Homebrew CLI should set update guidance");
+        assert!(message.contains("Homebrew"));
+        assert!(message.contains("will not replace it with an npm-managed install"));
+        assert!(!npm_install_log.exists());
+        Ok(())
+    }
+
+    #[test]
     fn refresh_cached_status_invalidates_missing_cached_cli_path() -> Result<()> {
         let _env_guard = env_lock();
         let _restore_fnm_env =
@@ -3472,6 +3573,20 @@ exit 1
         let prefix = temp.path().join(".codex-cli-npm");
         prepare_safe_npm_prefix(&prefix)?;
         assert_eq!(fs::metadata(prefix)?.permissions().mode() & 0o777, 0o700);
+        Ok(())
+    }
+
+    #[test]
+    fn dedicated_npm_prefix_hardens_existing_owned_directory() -> Result<()> {
+        let temp = tempdir()?;
+        fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o755))?;
+        let prefix = temp.path().join(".codex-cli-npm");
+        fs::create_dir(&prefix)?;
+        fs::set_permissions(&prefix, fs::Permissions::from_mode(0o775))?;
+
+        prepare_safe_npm_prefix(&prefix)?;
+
+        assert_eq!(fs::metadata(prefix)?.permissions().mode() & 0o777, 0o755);
         Ok(())
     }
 

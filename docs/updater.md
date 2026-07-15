@@ -18,7 +18,9 @@ It:
 Codex CLI preflight preserves the detected CLI install type. npm-managed
 installs continue to update through npm, while official standalone installs
 under `~/.codex/packages/standalone` are updated with the official standalone
-installer instead of being replaced through npm.
+installer instead of being replaced through npm. Homebrew/Linuxbrew installs
+are reused and reported, but the updater does not replace them with an
+npm-managed install.
 
 The updater scopes permission hardening to the official standalone installer
 process. New managed releases use the caller's existing umask plus the
