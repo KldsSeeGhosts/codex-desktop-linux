@@ -22,8 +22,8 @@ mod tests {
     use super::backends::hyprland::{parse_hyprland_clients, HYPRLAND_BACKEND};
     use super::backends::i3::{parse_i3_tree, parse_xprop_pid, I3_BACKEND};
     use super::backends::kwin::{
-        kwin_activate_script_source, kwin_window_id_from_uuid, kwin_window_script_source,
-        parse_kwin_windows, KWIN_BACKEND,
+        kwin_activate_script_source, kwin_geometry_script_source, kwin_window_id_from_uuid,
+        kwin_window_script_source, parse_kwin_windows, KwinGeometryOp, KWIN_BACKEND,
     };
     use super::backends::niri::{niri_focus_args, parse_niri_windows, NIRI_BACKEND};
     use super::registry::{
@@ -840,6 +840,39 @@ mod tests {
         assert!(script.contains("workspace.activeClient = targetWindow;"));
         assert!(script.contains(r#""ReceiveResult""#));
         assert!(!script.contains("WindowsRunner"));
+    }
+
+    #[test]
+    fn kwin_geometry_script_moves_and_resizes_frame_geometry() {
+        let move_script = kwin_geometry_script_source(
+            ":1.234",
+            "/com/openai/Codex/KWinWindowQuery/test",
+            "codex_kwin_window_query_test",
+            "{B4DFACF8-A559-43C9-8B1F-ECD5CFD78359}",
+            KwinGeometryOp::Move { x: 70, y: 116 },
+        )
+        .unwrap();
+        assert!(move_script.contains(r#"var mode = "move";"#));
+        assert!(move_script.contains("var first = 70;"));
+        assert!(move_script.contains("var second = 116;"));
+        assert!(move_script
+            .contains("window.frameGeometry = { x: x, y: y, width: width, height: height };"));
+        assert!(move_script.contains("window.tile = null;"));
+
+        let resize_script = kwin_geometry_script_source(
+            ":1.234",
+            "/com/openai/Codex/KWinWindowQuery/test",
+            "codex_kwin_window_query_test",
+            "{B4DFACF8-A559-43C9-8B1F-ECD5CFD78359}",
+            KwinGeometryOp::Resize {
+                width: 1080,
+                height: 1231,
+            },
+        )
+        .unwrap();
+        assert!(resize_script.contains(r#"var mode = "resize";"#));
+        assert!(resize_script.contains("var first = 1080;"));
+        assert!(resize_script.contains("var second = 1231;"));
     }
 
     #[test]

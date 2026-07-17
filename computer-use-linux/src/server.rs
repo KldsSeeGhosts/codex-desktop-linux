@@ -1248,7 +1248,7 @@ impl ComputerUseLinux {
 
     #[tool(
         name = "move_window",
-        description = "Move a window to a new desktop position (frame top-left in desktop coordinates). Useful to recover windows that are partially off-screen. Requires the computer-use-linux GNOME Shell extension.",
+        description = "Move a window to a new desktop position (frame top-left in desktop coordinates). Useful to recover windows that are partially off-screen. Supported on KWin/Plasma and the computer-use-linux GNOME Shell extension.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -1262,16 +1262,15 @@ impl ComputerUseLinux {
     ) -> Json<WindowGeometryOutput> {
         let received = Some(serde_json::json!(params.clone()));
         let target = params.target.clone().into_target();
-        self.window_geometry_op(received, &target, |window_id| async move {
-            crate::windowing::backends::gnome::move_extension_window(window_id, params.x, params.y)
-                .await
+        self.window_geometry_op(received, &target, |window| async move {
+            crate::windowing::registry::move_window(&window, params.x, params.y).await
         })
         .await
     }
 
     #[tool(
         name = "resize_window",
-        description = "Resize a window to a new frame width/height in desktop pixels, unmaximizing it first if needed. Useful to fit a window fully on-screen. Requires the computer-use-linux GNOME Shell extension.",
+        description = "Resize a window to a new frame width/height in desktop pixels, unmaximizing it first if needed. Useful to fit a window fully on-screen. Supported on KWin/Plasma and the computer-use-linux GNOME Shell extension.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -1285,13 +1284,8 @@ impl ComputerUseLinux {
     ) -> Json<WindowGeometryOutput> {
         let received = Some(serde_json::json!(params.clone()));
         let target = params.target.clone().into_target();
-        self.window_geometry_op(received, &target, |window_id| async move {
-            crate::windowing::backends::gnome::resize_extension_window(
-                window_id,
-                params.width,
-                params.height,
-            )
-            .await
+        self.window_geometry_op(received, &target, |window| async move {
+            crate::windowing::registry::resize_window(&window, params.width, params.height).await
         })
         .await
     }
@@ -1304,7 +1298,7 @@ impl ComputerUseLinux {
     // can't be env!("CARGO_PKG_VERSION"); the MCP safety check (CI) fails the
     // build if it drifts from the Cargo version.
     version = "0.3.1-linux-alpha1",
-    instructions = "Begin every turn that uses Computer Use by calling get_app_state. If diagnostics report disabled GNOME accessibility, call setup_accessibility before asking the user to retry. Use list_windows/focused_window before targeted keyboard input. If diagnostics report windowing.can_list_windows=false on GNOME, call setup_window_targeting to install the optional GNOME Shell extension backend, then ask the user to log out and back in if the setup report says a shell reload is required. This Linux backend can capture size-bounded screenshots through GNOME Shell, the Codex GNOME Shell extension, or XDG Desktop Portal, read AT-SPI trees with action/value metadata, invoke native AT-SPI actions, set AT-SPI values or editable text, list/focus compositor windows through registered Linux window backends when the session permits it, attach best-effort terminal tty/process metadata to terminal windows, send coordinate or element-targeted click/scroll/drag input through the Wayland remote desktop portal when available, and send layout-safe literal type_text through KDE clipboard integration on Plasma Wayland or through portal keysyms on other Wayland sessions before falling back to ydotool. Screenshot results include width/height for the returned image plus coordinate_width/coordinate_height and scale for desktop coordinate conversion; request more detail with max_width, max_height, max_bytes, format=jpeg, quality, or a smaller target/crop instead of relying on unbounded screenshots. Tools with readOnlyHint=false may mutate local desktop or application state; hosts should require approval for actions that can submit, delete, send, purchase, or overwrite data. For element-targeted actions, prefer element_index from the latest get_app_state result; click, perform_action, and set_value can also use semantic role/name/text/states selectors when the target is unique. type_text and press_key accept optional window_id, pid, app_id, wm_class, title, tty, terminal_pid, terminal_command, or terminal_cwd selectors and refuse targeted input if focus cannot be verified. After targeted keyboard input, results append focused-element feedback from AT-SPI (role, name, editable) and warn when no editable element holds focus — treat that warning as the input not landing. Screenshot, click, and input results warn when the target window or coordinate is partially or fully off-screen; use move_window/resize_window (GNOME Shell extension backend) to bring a window fully on-screen before retrying. scroll accepts the same window targeting and relative coordinates as click. get_app_state returns a compact readiness block by default; pass verbose=true for the full diagnostics dump. Electron apps expose no AT-SPI tree unless launched with --force-renderer-accessibility."
+    instructions = "Begin every turn that uses Computer Use by calling get_app_state. If diagnostics report disabled GNOME accessibility, call setup_accessibility before asking the user to retry. Use list_windows/focused_window before targeted keyboard input. If diagnostics report windowing.can_list_windows=false on GNOME, call setup_window_targeting to install the optional GNOME Shell extension backend, then ask the user to log out and back in if the setup report says a shell reload is required. This Linux backend can capture size-bounded screenshots through GNOME Shell, the Codex GNOME Shell extension, or XDG Desktop Portal, read AT-SPI trees with action/value metadata, invoke native AT-SPI actions, set AT-SPI values or editable text, list/focus compositor windows through registered Linux window backends when the session permits it, attach best-effort terminal tty/process metadata to terminal windows, send coordinate or element-targeted click/scroll/drag input through the Wayland remote desktop portal when available, and send layout-safe literal type_text through KDE clipboard integration on Plasma Wayland or through portal keysyms on other Wayland sessions before falling back to ydotool. Screenshot results include width/height for the returned image plus coordinate_width/coordinate_height and scale for desktop coordinate conversion; request more detail with max_width, max_height, max_bytes, format=jpeg, quality, or a smaller target/crop instead of relying on unbounded screenshots. Tools with readOnlyHint=false may mutate local desktop or application state; hosts should require approval for actions that can submit, delete, send, purchase, or overwrite data. For element-targeted actions, prefer element_index from the latest get_app_state result; click, perform_action, and set_value can also use semantic role/name/text/states selectors when the target is unique. type_text and press_key accept optional window_id, pid, app_id, wm_class, title, tty, terminal_pid, terminal_command, or terminal_cwd selectors and refuse targeted input if focus cannot be verified. After targeted keyboard input, results append focused-element feedback from AT-SPI (role, name, editable) and warn when no editable element holds focus — treat that warning as the input not landing. Screenshot, click, and input results warn when the target window or coordinate is partially or fully off-screen; use move_window/resize_window (KWin/Plasma or GNOME Shell extension backend) to bring a window fully on-screen before retrying. scroll accepts the same window targeting and relative coordinates as click. get_app_state returns a compact readiness block by default; pass verbose=true for the full diagnostics dump. Electron apps expose no AT-SPI tree unless launched with --force-renderer-accessibility."
 )]
 impl ServerHandler for ComputerUseLinux {}
 
@@ -2241,8 +2235,8 @@ impl ComputerUseLinux {
         }
     }
 
-    /// Shared move/resize plumbing: resolve the window target, run the GNOME
-    /// Shell extension operation, then re-query bounds to report the result.
+    /// Shared move/resize plumbing: resolve the window target, run the matching
+    /// compositor backend operation, then re-query bounds to report the result.
     async fn window_geometry_op<F, Fut>(
         &self,
         received: Option<serde_json::Value>,
@@ -2250,7 +2244,7 @@ impl ComputerUseLinux {
         op: F,
     ) -> Json<WindowGeometryOutput>
     where
-        F: FnOnce(u64) -> Fut,
+        F: FnOnce(crate::windowing::WindowInfo) -> Fut,
         Fut: Future<Output = Result<String>>,
     {
         let windows = match list_windows().await {
@@ -2260,7 +2254,7 @@ impl ComputerUseLinux {
                 return Json(WindowGeometryOutput {
                     ok: false,
                     implemented: true,
-                    backend: crate::windowing::GNOME_SHELL_EXTENSION_BACKEND.to_string(),
+                    backend: "none".to_string(),
                     window: None,
                     message: format!("Window listing failed: {error}"),
                     permissions_hint: window_permission_hint(&error),
@@ -2268,13 +2262,13 @@ impl ComputerUseLinux {
                 });
             }
         };
-        let window_id = match resolve_window_target(&windows, target) {
-            Ok(window) => window.window_id,
+        let requested = match resolve_window_target(&windows, target) {
+            Ok(window) => window.clone(),
             Err(error) => {
                 return Json(WindowGeometryOutput {
                     ok: false,
                     implemented: true,
-                    backend: crate::windowing::GNOME_SHELL_EXTENSION_BACKEND.to_string(),
+                    backend: "none".to_string(),
                     window: None,
                     message: format!("{error:#}"),
                     permissions_hint: None,
@@ -2282,7 +2276,9 @@ impl ComputerUseLinux {
                 });
             }
         };
-        match op(window_id).await {
+        let window_id = requested.window_id;
+        let backend = requested.backend.clone();
+        match op(requested).await {
             Ok(message) => {
                 // Re-query so the caller sees the compositor-final geometry
                 // (tiling constraints, minimum sizes, etc. may adjust it).
@@ -2300,7 +2296,7 @@ impl ComputerUseLinux {
                 Json(WindowGeometryOutput {
                     ok: true,
                     implemented: true,
-                    backend: crate::windowing::GNOME_SHELL_EXTENSION_BACKEND.to_string(),
+                    backend,
                     window,
                     message,
                     permissions_hint: None,
@@ -2312,7 +2308,7 @@ impl ComputerUseLinux {
                 Json(WindowGeometryOutput {
                     ok: false,
                     implemented: true,
-                    backend: crate::windowing::GNOME_SHELL_EXTENSION_BACKEND.to_string(),
+                    backend,
                     window: None,
                     permissions_hint: window_permission_hint(&error),
                     message: error,

@@ -9,7 +9,7 @@ It supports:
 - app listing and accessibility trees through AT-SPI
 - screenshots through GNOME Shell DBus, the Codex GNOME Shell extension, or XDG Desktop Portal
 - window listing and focusing on GNOME, KWin/Plasma, Hyprland, Niri, COSMIC,
-  and i3
+  and i3; window move/resize on KWin/Plasma and the GNOME Shell extension
 - keyboard, text, click, scroll, and drag input through `/dev/uinput`, XDG
   RemoteDesktop portal, or `ydotool`
 
