@@ -8877,6 +8877,60 @@ test("current split Browser webview assets apply all recovery descriptors withou
   }
 });
 
+test("reports drift when current split Browser recovery assets lose their primary needles", () => {
+  const cases = [
+    {
+      assetName:
+        "app-initial~artifact-tab-content.electron~app-main~appgen-settings-page~page~pull-request-r~mxek7o2y-BH5mkLvE.js",
+      patchName: "linux-browser-use-webview-attach-recovery-store",
+    },
+    {
+      assetName:
+        "app-initial~app-main~pull-request-route~onboarding-page~hotkey-window-thread-page~quick-cha~mo2avlln-Be1pn_Z1.js",
+      patchName: "linux-browser-use-webview-attach-recovery-host",
+    },
+    {
+      assetName: "browser-sidebar-hidden-browser-use-webview-host-DbLBblbO.js",
+      patchName: "linux-browser-use-hidden-host-ownership",
+    },
+  ];
+
+  for (const { assetName, patchName } of cases) {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "codex-browser-recovery-drift-"));
+    try {
+      const buildDir = path.join(tempRoot, ".vite", "build");
+      const assetsDir = path.join(tempRoot, "webview", "assets");
+      fs.mkdirSync(buildDir, { recursive: true });
+      fs.mkdirSync(assetsDir, { recursive: true });
+      fs.writeFileSync(path.join(buildDir, "main.js"), "module.exports={}");
+      fs.writeFileSync(path.join(assetsDir, assetName), "function A(){return null}");
+
+      const report = createPatchReport();
+      const corePatchRoot = path.join(
+        __dirname,
+        "patches",
+        "core",
+        "all-linux",
+        "webview",
+        "browser-use-attach-recovery",
+      );
+      captureWarns(() => patchExtractedApp(tempRoot, { report, corePatchRoot }));
+
+      assert.equal(
+        report.patches.find((patch) => patch.name === patchName)?.status,
+        "skipped-optional",
+        patchName,
+      );
+      assert.ok(
+        optionalDriftFromReport(report).some((patch) => patch.name === patchName),
+        patchName,
+      );
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  }
+});
+
 test("Browser webview host recovery rejects current-DMG drift byte-identically", () => {
   const drifted = browserUseRecoveryHostSource.replace(
     "P.syncElectronWebview(g,",

@@ -756,14 +756,9 @@ function applyLinuxBrowserUseWebviewRemountStorePatch(currentSource) {
     !classSource.includes("disposeWebviewHost(") ||
     !classSource.includes("emitChange()")
   ) {
-    if (
-      currentSource.includes("registrationAttempts=new WeakMap") ||
-      currentSource.includes("registerWebviewHost(")
-    ) {
-      console.warn(
-        "WARN: Could not find Browser webview store remount insertion point — skipping Linux attachment recovery store patch",
-      );
-    }
+    console.warn(
+      "WARN: Could not find Browser webview store remount insertion point — skipping Linux attachment recovery store patch",
+    );
     return currentSource;
   }
 
@@ -850,14 +845,9 @@ function applyLinuxBrowserUseWebviewHostRecoveryPatch(currentSource) {
   const closeBraceIndex =
     openBraceIndex === -1 ? -1 : findMatchingBrace(currentSource, openBraceIndex);
   if (match == null || openBraceIndex === -1 || closeBraceIndex === -1) {
-    if (
-      currentSource.includes("shouldBootstrapWhenHidden") &&
-      currentSource.includes("claimMountGeneration")
-    ) {
-      console.warn(
-        "WARN: Could not find Browser webview host component — skipping Linux attachment recovery host patch",
-      );
-    }
+    console.warn(
+      "WARN: Could not find Browser webview host component — skipping Linux attachment recovery host patch",
+    );
     return currentSource;
   }
 
@@ -963,6 +953,9 @@ function applyLinuxBrowserUseWebviewHostRecoveryPatch(currentSource) {
 function applyLinuxBrowserUseHiddenHostOwnershipPatch(currentSource) {
   const keyMatch = /browserUseTabIdsKey:([A-Za-z_$][\w$]*)/u.exec(currentSource);
   if (keyMatch == null) {
+    console.warn(
+      "WARN: Could not find hidden Browser Use host tab ownership key — skipping Linux inactive-route host patch",
+    );
     return currentSource;
   }
 
