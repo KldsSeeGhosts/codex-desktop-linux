@@ -5,7 +5,8 @@ use crate::{
     cli::{Cli, Commands},
     codex_cli,
     config::{RuntimeConfig, RuntimePaths},
-    diagnostics, feature_picker, install, install_rollback, liveness, logging, notify, rollback,
+    diagnostics, feature_picker, install, install_rollback, liveness, logging, notify, restart,
+    rollback,
     state::{CliStatus, PersistedState, UpdateStatus},
     upstream, wrapper, wrapper_apply,
 };
@@ -28,6 +29,8 @@ const CLI_MISSING_NOTIFICATION_EVENT: &str = "cli_missing";
 const CLI_MISSING_PROMPT_DISMISS_TTL: ChronoDuration = ChronoDuration::minutes(10);
 const PROMPT_INSTALL_CLI_CANCELLED_EXIT_CODE: i32 = 10;
 const PROMPT_INSTALL_CLI_NO_BACKEND_EXIT_CODE: i32 = 11;
+// Nonzero so `Restart=on-failure` relaunches the daemon on the new binary.
+const BINARY_REPLACED_RESTART_EXIT_CODE: i32 = 12;
 const POLKIT_AUTH_AGENT_PROCESS_TOKENS: &[&str] = &[
     "budgie-polkit",
     "cinnamon-polkit",
@@ -88,6 +91,11 @@ pub async fn run(cli: Cli) -> Result<()> {
             print_path,
             allow_install_missing,
         ),
+        Commands::RecoverStandaloneCli {
+            codex_home,
+            install_dir,
+            print_path,
+        } => run_recover_standalone_cli(codex_home, install_dir, print_path),
         Commands::PromptInstallCli {
             cli_path,
             print_path,
@@ -464,6 +472,14 @@ async fn run_daemon(
             break;
         }
 
+        if let Some(installed_binary) = restart::replacement_binary() {
+            info!(
+                installed_binary = %installed_binary.display(),
+                "updater binary was replaced on disk; exiting so systemd restarts the daemon"
+            );
+            std::process::exit(BINARY_REPLACED_RESTART_EXIT_CODE);
+        }
+
         tokio::select! {
             _ = check_interval.tick() => {
                 if let Err(error) = run_check_cycle_from_disk(config, state, paths).await {
@@ -783,6 +799,18 @@ fn run_cli_preflight(
     let outcome = codex_cli::preflight(state, paths, cli_path, allow_install_missing)?;
     if print_path {
         println!("{}", outcome.cli_path.display());
+    }
+    Ok(())
+}
+
+fn run_recover_standalone_cli(
+    codex_home: Option<PathBuf>,
+    install_dir: Option<PathBuf>,
+    print_path: bool,
+) -> Result<()> {
+    let launch_path = codex_cli::recover_standalone_cli(codex_home, install_dir)?;
+    if print_path {
+        println!("{}", launch_path.display());
     }
     Ok(())
 }
@@ -3309,6 +3337,7 @@ mod tests {
     fn prompt_install_cli_does_not_treat_non_executable_file_as_installed() -> Result<()> {
         let _env_guard = crate::test_util::env_lock();
         let temp = tempfile::tempdir()?;
+        fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o755))?;
         let paths = RuntimePaths {
             config_file: temp.path().join("config/config.toml"),
             state_file: temp.path().join("state/state.json"),
@@ -3730,6 +3759,7 @@ mod tests {
     fn status_preserves_cli_reconciliation_failure() -> Result<()> {
         let _env_guard = crate::test_util::env_lock();
         let temp = tempfile::tempdir()?;
+        fs::set_permissions(temp.path(), fs::Permissions::from_mode(0o755))?;
         let paths = RuntimePaths {
             config_file: temp.path().join("config/config.toml"),
             state_file: temp.path().join("state/state.json"),
@@ -3742,6 +3772,7 @@ mod tests {
 
         let bin_dir = temp.path().join("bin");
         fs::create_dir_all(&bin_dir)?;
+        fs::set_permissions(&bin_dir, fs::Permissions::from_mode(0o755))?;
         let codex_path = bin_dir.join("codex");
         fs::write(
             &codex_path,
@@ -3759,6 +3790,9 @@ mod tests {
         let mut permissions = fs::metadata(&npm_path)?.permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(&npm_path, permissions)?;
+        let node_path = bin_dir.join("node");
+        fs::write(&node_path, "#!/bin/sh\nexec /bin/sh \"$@\"\n")?;
+        fs::set_permissions(node_path, fs::Permissions::from_mode(0o755))?;
 
         let original_home = std::env::var_os("HOME");
         let original_path = std::env::var_os("PATH");
