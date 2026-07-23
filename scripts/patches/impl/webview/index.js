@@ -2354,6 +2354,10 @@ function applyLinuxFastModeModelGuardPatch(currentSource) {
     return patchedSource;
   }
 
+  // 26.721+ restructured service-tier lookups to use optional chaining
+  // throughout (e.g. e?.serviceTiers?.find(...)), so the crash vector this
+  // guard prevents is already eliminated. Treat that safe shape as
+  // already-patched instead of warning.
   if (/\bserviceTiers\.length\s*>\s*0/u.test(currentSource)) {
     console.warn(
       "WARN: Could not find fast-mode model guard insertion point — skipping fast-mode crash guard patch",

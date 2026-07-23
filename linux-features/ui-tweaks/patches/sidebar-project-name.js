@@ -2,7 +2,7 @@
 
 const DEFAULT_PROJECT_NAME_STYLE = "font-weight: 700 !important;";
 const PROJECTS_SIDEBAR_ASSET_PATTERN =
-  /^app-initial~notebook-preview-panel~app-main~pull-request-route~projects-index-page~cloud-en~lpx9dmpy-[^.]+\.js$/;
+  /^(?:app-initial~notebook-preview-panel~app-main~pull-request-route~projects-index-page~cloud-en~lpx9dmpy-[^.]+|app-initial-[^.]+)\.js$/;
 const PROJECT_NAME_SELECTOR = ".group\\/folder-row .text-fade-truncate.pr-1";
 const STYLE_ID = "codex-linux-ui-tweaks-sidebar-project-name-style";
 const RUNTIME_MARKER = "codexLinuxUiTweaksSidebarProjectNameStyleRuntime";

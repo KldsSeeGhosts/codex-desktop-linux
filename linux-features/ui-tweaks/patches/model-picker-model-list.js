@@ -1,12 +1,12 @@
 "use strict";
 
 const MODEL_PICKER_STATE_ASSET_PATTERN =
-  /^app-initial~app-main~settings-command-menu-section-items~new-thread-panel-page~settings-pag~unq8yzli-[^.]+\.js$/;
+  /^(?:app-initial~app-main~settings-command-menu-section-items~new-thread-panel-page~settings-pag~unq8yzli-[^.]+|app-initial-[^.]+)\.js$/;
 const MODEL_PICKER_ALLOWLIST_ASSET_PATTERN =
-  /^app-initial~avatarOverlayCompositionSurface~artifact-tab-content\.electron~app-main~plugin-d~kw7nl1sl-[^.]+\.js$/;
+  /^(?:app-initial~avatarOverlayCompositionSurface~artifact-tab-content\.electron~app-main~plugin-d~kw7nl1sl-[^.]+|app-initial-[^.]+)\.js$/;
 const MODEL_PICKER_INLINE_ASSET_PATTERN = MODEL_PICKER_STATE_ASSET_PATTERN;
 const MODEL_PICKER_EFFORT_ASSET_PATTERN =
-  /^app-initial~app-main~new-thread-panel-page~appgen-library-page~hotkey-window-thread-page~ho~jhj9i1pn-[^.]+\.js$/;
+  /^(?:app-initial~app-main~new-thread-panel-page~appgen-library-page~hotkey-window-thread-page~ho~jhj9i1pn-[^.]+|app-initial-[^.]+)\.js$/;
 const SIMPLE_MENU_VIEW_PATTERN =
   /([A-Za-z_$][\w$]*)=([A-Za-z_$][\w$]*)\(`composer-model-picker-menu-view-v1`,`simple`\)/;
 const ADVANCED_MENU_VIEW_PATTERN =
@@ -21,6 +21,14 @@ const MODEL_ALLOWLIST_MARKER = "l?t.has(n.model):!n.hidden";
 const GPT_56_ALLOWLIST_MARKER =
   "l?t.has(n.model)||n.model.startsWith(`gpt-5.6-`)&&!n.hidden:!n.hidden";
 const JS_IDENT = "[A-Za-z_$][\\w$]*";
+const MODEL_ALLOWLIST_PATTERN = new RegExp(
+  `(${JS_IDENT})\\?(${JS_IDENT})\\.has\\((${JS_IDENT})\\.model\\):!\\3\\.hidden`,
+);
+const GPT_56_ALLOWLIST_PATTERN = new RegExp(
+  `${JS_IDENT}\\?${JS_IDENT}\\.has\\(${JS_IDENT}\\.model\\)\\|\\|` +
+    `${JS_IDENT}\\.model\\.startsWith\\(\\x60gpt-5\\.6-\\x60\\)&&!${JS_IDENT}\\.hidden:` +
+    `!${JS_IDENT}\\.hidden`,
+);
 
 function warn(message) {
   console.warn(`WARN: ${message} - skipping ui-tweaks model picker patch`);
@@ -126,17 +134,23 @@ function applyGpt56AllowlistPatch(source, context = {}) {
       warn("Asset source is not a string");
       return source;
     }
-    if (!enabled(context) || source.includes(GPT_56_ALLOWLIST_MARKER)) {
+    if (!enabled(context) || source.includes(GPT_56_ALLOWLIST_MARKER) || GPT_56_ALLOWLIST_PATTERN.test(source)) {
       return source;
     }
-    if (!source.includes(MODEL_ALLOWLIST_MARKER)) {
+    const match = source.match(MODEL_ALLOWLIST_PATTERN);
+    if (match == null) {
       if (context.warnOnMissingMarkers === true) {
         warn("Could not find the model availability allowlist marker");
       }
       return source;
     }
 
-    return source.replace(MODEL_ALLOWLIST_MARKER, GPT_56_ALLOWLIST_MARKER);
+    const [original, availabilityVar, modelsVar, modelVar] = match;
+    const gpt56AllowlistMarker =
+      original === MODEL_ALLOWLIST_MARKER
+        ? GPT_56_ALLOWLIST_MARKER
+        : `${availabilityVar}?${modelsVar}.has(${modelVar}.model)||${modelVar}.model.startsWith(\`gpt-5.6-\`)&&!${modelVar}.hidden:!${modelVar}.hidden`;
+    return source.replace(original, gpt56AllowlistMarker);
   } catch (error) {
     warn(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
     return source;
@@ -168,6 +182,49 @@ function applyDynamicSupportedReasoningEffortsPatch(source, context = {}) {
         warn("Could not find the supported reasoning effort mapper");
       }
       return source;
+    }
+
+    const compactPowerSelectionPattern = new RegExp(
+      `function (${JS_IDENT})\\((${JS_IDENT}),\\{includeUltraInSlider:(${JS_IDENT})=!1,` +
+        `removeXHigh:(${JS_IDENT})=!1\\}=\\{\\}\\)\\{let (${JS_IDENT})=(${JS_IDENT})\\((.+?),\\2\\);` +
+        `if\\(\\5\\.length>=3\\)return \\5;let (${JS_IDENT})=(${JS_IDENT})\\((.+?),\\2\\);` +
+        `return \\8\\.length>=3\\?\\8:\\[\\]\\}`,
+    );
+    const compactMatch = source.match(compactPowerSelectionPattern);
+    if (compactMatch != null) {
+      const [
+        original,
+        resolverFunction,
+        modelsVar,
+        includeUltraVar,
+        removeXHighVar,
+        primarySelectionsVar,
+        supportedSelectionsFilter,
+        primaryCandidates,
+        fallbackSelectionsVar,
+        fallbackSelectionsFilter,
+        fallbackCandidates,
+      ] = compactMatch;
+      const patched =
+        `function ${resolverFunction}(${modelsVar},{includeUltraInSlider:${includeUltraVar}=!1,` +
+        `removeXHigh:${removeXHighVar}=!1}={}){` +
+        `let ${primarySelectionsVar}=${supportedSelectionsFilter}(` +
+        `${primaryCandidates}.filter(codexLinuxCandidate=>` +
+        `codexLinuxCandidate.model!==\`gpt-5.6-sol\`),${modelsVar}),` +
+        `codexLinuxSolModel=${modelsVar}?.find(${modelsVar}=>` +
+        `${modelsVar}.model===\`gpt-5.6-sol\`),` +
+        `codexLinuxSolSelections=codexLinuxSolModel==null?[]:` +
+        `${dynamicPowerSelectionsFunction}([codexLinuxSolModel]).map((${modelsVar},codexLinuxIndex)=>` +
+        `({...${modelsVar},powerSettingIndex:${primarySelectionsVar}.length+codexLinuxIndex})).filter(` +
+        `({reasoningEffort:codexLinuxReasoningEffort})=>` +
+        `(${includeUltraVar}||codexLinuxReasoningEffort!==\`ultra\`)&&` +
+        `(!${removeXHighVar}||codexLinuxReasoningEffort!==\`xhigh\`)),` +
+        `codexLinuxPowerSelections=[...${primarySelectionsVar},...codexLinuxSolSelections]` +
+        `/*${DYNAMIC_POWER_EFFORTS_RUNTIME_MARKER}*/;` +
+        `if(codexLinuxPowerSelections.length>=3)return codexLinuxPowerSelections;` +
+        `let ${fallbackSelectionsVar}=${fallbackSelectionsFilter}(${fallbackCandidates},${modelsVar});` +
+        `return ${fallbackSelectionsVar}.length>=3?${fallbackSelectionsVar}:[]}`;
+      return source.replace(original, patched);
     }
 
     const powerSelectionPattern = new RegExp(

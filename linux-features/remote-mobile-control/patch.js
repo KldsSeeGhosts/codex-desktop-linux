@@ -54,17 +54,17 @@ const REMOTE_MOBILE_APP_SERVER_REMOTE_CONTROL_MARKER = "codexLinuxRemoteMobileAp
 const REMOTE_MOBILE_APP_SERVER_ARGS_NEEDLE =
   "[`-c`,`features.code_mode_host=true`,`app-server`,`--analytics-default-enabled`]";
 const REMOTE_MOBILE_RUNTIME_ASSET_PATTERN =
-  /^app-initial~artifact-tab-content\.electron~notebook-preview-panel~app-main~business-checkout~oxnpxkxc-[^.]+\.js$/u;
+  /^(?:app-initial~artifact-tab-content\.electron~notebook-preview-panel~app-main~business-checkout~oxnpxkxc-[^.]+|app-initial-[^.]+)\.js$/u;
 const REMOTE_MOBILE_TERMINAL_STATUS_ASSET_PATTERN =
-  /^app-initial~artifact-tab-content\.electron~notebook-preview-panel~app-main~business-checkout~oxnpxkxc-[^.]+\.js$/u;
+  /^(?:app-initial~artifact-tab-content\.electron~notebook-preview-panel~app-main~business-checkout~oxnpxkxc-[^.]+|app-initial-[^.]+)\.js$/u;
 const REMOTE_CONTROL_APP_MAIN_PAGE_ASSET_PATTERN =
-  /^app-initial~app-main~appgen-settings-page~page~appgen-library-page~appgen-page~appgen-setti~ogh9jurw-[^.]+\.js$/u;
+  /^(?:app-initial~app-main~appgen-settings-page~page~appgen-library-page~appgen-page~appgen-setti~ogh9jurw-[^.]+|app-initial-[^.]+)\.js$/u;
 const REMOTE_CONTROL_VISIBILITY_ASSET_PATTERN =
-  /^app-initial~avatarOverlayCompositionSurface~notebook-preview-panel~app-main~appgen-settings~el5fc9d5-[^.]+\.js$/u;
+  /^(?:app-initial~avatarOverlayCompositionSurface~notebook-preview-panel~app-main~appgen-settings~el5fc9d5-[^.]+|app-initial-[^.]+)\.js$/u;
 const REMOTE_CONTROL_LOAD_GATE_ASSET_PATTERN =
-  /^app-initial~artifact-tab-content\.electron~notebook-preview-panel~app-main~business-checkout~k87y25tw-[^.]+\.js$/u;
+  /^(?:app-initial~artifact-tab-content\.electron~notebook-preview-panel~app-main~business-checkout~k87y25tw-[^.]+|app-initial-[^.]+)\.js$/u;
 const REMOTE_MOBILE_ACTIVE_STATUS_ASSET_PATTERN =
-  /^app-initial~notebook-preview-panel~app-main~pull-request-route~projects-index-page~cloud-en~lpx9dmpy-[^.]+\.js$/u;
+  /^(?:app-initial~notebook-preview-panel~app-main~pull-request-route~projects-index-page~cloud-en~lpx9dmpy-[^.]+|app-initial-[^.]+)\.js$/u;
 const REMOTE_CONTROL_LINUX_COPY_REPLACEMENTS = [
   ["defaultMessage:`Mac`", "defaultMessage:`Linux`"],
   ["Keep this Mac awake", "Keep this Linux desktop awake"],
@@ -1043,9 +1043,15 @@ function applyLinuxRemoteMobileWorkspaceRegistrationPatch(source) {
     return source;
   }
 
-  const dispatcherMatch = source.match(
+  // 26.721+ replaced the bulk `electron-update-workspace-root-options` dispatch
+  // with per-root `electron-add-new-workspace-root-option` calls. Match both.
+  const bulkDispatcherMatch = source.match(
     /([A-Za-z_$][\w$]*)\.dispatchMessage\(`electron-update-workspace-root-options`,\{roots:/u,
   );
+  const singularDispatcherMatch = source.match(
+    /([A-Za-z_$][\w$]*)\.dispatchMessage\(`electron-add-new-workspace-root-option`,\{root:/u,
+  );
+  const dispatcherMatch = bulkDispatcherMatch ?? singularDispatcherMatch;
   if (dispatcherMatch == null) {
     console.warn(
       "WARN: Could not find workspace-root update dispatcher - skipping remote mobile workspace registration patch",
@@ -1053,6 +1059,10 @@ function applyLinuxRemoteMobileWorkspaceRegistrationPatch(source) {
     return source;
   }
   const dispatcherVar = dispatcherMatch[1];
+  const dispatcherMessage =
+    bulkDispatcherMatch != null
+      ? `electron-update-workspace-root-options`
+      : `electron-add-new-workspace-root-option`;
 
   const managerAnchor = "this.threadStore=new";
   const managerStart = source.indexOf(managerAnchor);
@@ -1091,7 +1101,7 @@ function applyLinuxRemoteMobileWorkspaceRegistrationPatch(source) {
     `let{value:e}=await this.fetchFromHost(\`get-global-state\`,{params:{key:\`codex-mobile-has-connected-device\`}});if(e!==!0)return;` +
     `let{value:n}=await this.fetchFromHost(\`get-global-state\`,{params:{key:\`electron-saved-workspace-roots\`}}),r=new Set(Array.isArray(n)?n.filter(e=>typeof e===\`string\`):[]),i=Date.now()-6048e5,a=!1;` +
     `for(let e of t){if(e?.source!==\`cli\`||e?.ephemeral===!0)continue;let t=e?.cwd;if(typeof t!==\`string\`||!t.startsWith(\`/\`)||t===\`/\`||t.includes(\`\0\`)||t===\`/tmp\`||t.startsWith(\`/tmp/\`)||t===\`/var/tmp\`||t.startsWith(\`/var/tmp/\`)||t===\`/run\`||t.startsWith(\`/run/\`)||t===\`/proc\`||t.startsWith(\`/proc/\`)||t===\`/sys\`||t.startsWith(\`/sys/\`)||t===\`/dev\`||t.startsWith(\`/dev/\`))continue;let n=Number(e?.updatedAt??e?.createdAt);if(!Number.isFinite(n)||n<=0||(n<1e12?n*1e3:n)<i)continue;r.has(t)||(r.add(t),a=!0)}` +
-    `a&&${dispatcherVar}.dispatchMessage(\`electron-update-workspace-root-options\`,{roots:Array.from(r)})}).catch(()=>{})}` +
+    `a&&${dispatcherVar}.dispatchMessage(\`${dispatcherMessage}\`,${bulkDispatcherMatch != null ? "{roots:Array.from(r)}" : "...Array.from(r).map(e=>({root:e}))"})}).catch(()=>{})}` +
     `/*${REMOTE_MOBILE_WORKSPACE_REGISTRATION_MARKER}*/`;
 
   let patched =

@@ -6,7 +6,7 @@ function applyLinuxQuitGuardPatch(currentSource) {
   }
 
   const currentBundlerQuitGuardNeedle =
-    /(?:let|,)\s*([A-Za-z_$][\w$]*)=require\(`electron`\);\1=[^;]+;[\s\S]{0,500}?(?:let|,)\s*([A-Za-z_$][\w$]*)=require\(`node:path`\);\2=[^;]+;[\s\S]{0,500}?(?:let|,)\s*([A-Za-z_$][\w$]*)=require\(`node:fs`\);\3=[^;]+;/;
+    /(?:let|,)\s*([A-Za-z_$][\w$]*)=require\([`"']electron[`"']\)(?:,[^;]+;\1=[^;]+;|;\1=[^;]+;)[\s\S]{0,500}?(?:let|,)\s*([A-Za-z_$][\w$]*)=require\([`"']node:path[`"']\)(?:,[^;]+;\2=[^;]+;|;\2=[^;]+;)[\s\S]{0,500}?(?:let|,)\s*([A-Za-z_$][\w$]*)=require\([`"']node:fs[`"']\)(?:,[^;]+;\3=[^;]+;|;\3=[^;]+;)/;
   const currentBundlerQuitGuardMatch = currentSource.match(currentBundlerQuitGuardNeedle);
   if (currentBundlerQuitGuardMatch != null) {
     const matchedPrefix = currentBundlerQuitGuardMatch[0];
@@ -16,7 +16,7 @@ function applyLinuxQuitGuardPatch(currentSource) {
     return currentSource.replace(matchedPrefix, `${matchedPrefix}${quitGuardSuffix}`);
   }
 
-  if (currentSource.includes("require(`electron`)") && currentSource.includes("require(`node:path`)")) {
+  if ((currentSource.includes("require(`electron`)") || currentSource.includes('require("electron")')) && (currentSource.includes("require(`node:path`)") || currentSource.includes('require("node:path")'))) {
     console.warn("WARN: Could not find Linux quit guard insertion point — skipping explicit quit-state patch");
   }
 
@@ -124,6 +124,8 @@ function applyLinuxExplicitTrayQuitPatch(currentSource) {
     /\{label:rB\(([^)]+)\),click:\(\)=>\{([A-Za-z_$][\w$]*)\.app\.quit\(\)\}\}/g;
   const genericTrayQuitRegex =
     /\{label:([A-Za-z_$][\w$]*\(this\.appName\)),click:\(\)=>\{([A-Za-z_$][\w$]*)\.app\.quit\(\)\}\}/g;
+  const systemQuitLabelTrayQuitRegex =
+    /\{label:this\.systemQuitMenuItemLabel,click:\(\)=>\{([A-Za-z_$][\w$]*)\.app\.quit\(\)\}\}/g;
   let patchedAny = false;
   if (patchedSource.includes(trayQuitNeedle)) {
     patchedAny = true;
@@ -141,6 +143,13 @@ function applyLinuxExplicitTrayQuitPatch(currentSource) {
     (_match, labelExpression, electronVar) => {
       patchedAny = true;
       return `{label:${labelExpression},click:()=>{${quitMarkerExpression}${electronVar}.app.quit()}}`;
+    },
+  );
+  patchedSource = patchedSource.replace(
+    systemQuitLabelTrayQuitRegex,
+    (_match, electronVar) => {
+      patchedAny = true;
+      return `{label:this.systemQuitMenuItemLabel,click:()=>{${quitMarkerExpression}${electronVar}.app.quit()}}`;
     },
   );
   if (
