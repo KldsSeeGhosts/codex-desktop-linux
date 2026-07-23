@@ -53,6 +53,8 @@ const REMOTE_CONTROL_COPY_MARKER = "codexLinuxRemoteControlCopy";
 const REMOTE_MOBILE_APP_SERVER_REMOTE_CONTROL_MARKER = "codexLinuxRemoteMobileAppServerArgs";
 const REMOTE_MOBILE_APP_SERVER_ARGS_NEEDLE =
   "[`-c`,`features.code_mode_host=true`,`app-server`,`--analytics-default-enabled`]";
+const REMOTE_MOBILE_APP_SERVER_WSL_ARGS_NEEDLE =
+  "[n.Qn(Kx()),`-c`,`features.code_mode_host=true`,`app-server`,`--analytics-default-enabled`].join(` `)";
 const REMOTE_MOBILE_RUNTIME_ASSET_PATTERN =
   /^(?:app-initial~artifact-tab-content\.electron~notebook-preview-panel~app-main~business-checkout~oxnpxkxc-[^.]+|app-initial-[^.]+)\.js$/u;
 const REMOTE_MOBILE_TERMINAL_STATUS_ASSET_PATTERN =
@@ -79,6 +81,8 @@ const REMOTE_CONTROL_LINUX_COPY_REPLACEMENTS = [
   ["SSH connections from this Mac", "SSH connections from this Linux desktop"],
   ["Use your Mac apps while locked", "Use your Linux apps while locked"],
   ["Control Mac apps from your phone", "Control Linux apps from your phone"],
+  ["Approve on your device to control this Mac remotely", "Approve on your device to control this Linux desktop remotely"],
+  ["Connect a device to this Mac", "Connect a device to this Linux desktop"],
   ["Let Codex control the apps on your Mac.", "Let Codex control apps on this Linux desktop."],
   ["Let Codex control the apps on your Mac", "Let Codex control apps on this Linux desktop"],
   ["Let ChatGPT control apps on your Mac", "Let ChatGPT control apps on this Linux desktop"],
@@ -228,15 +232,18 @@ function applyLinuxRemoteMobileAppServerRemoteControlPatch(source) {
   if (source.includes(REMOTE_MOBILE_APP_SERVER_REMOTE_CONTROL_MARKER)) {
     return source;
   }
-  if (!source.includes(REMOTE_MOBILE_APP_SERVER_ARGS_NEEDLE)) {
+  const hasDefaultArgs = source.includes(REMOTE_MOBILE_APP_SERVER_ARGS_NEEDLE);
+  const hasWslArgs = source.includes(REMOTE_MOBILE_APP_SERVER_WSL_ARGS_NEEDLE);
+  if (!hasDefaultArgs && !hasWslArgs) {
     return source;
   }
 
-  const helper =
-    "function codexLinuxRemoteMobileAppServerArgs(){return process.platform===`linux`?[`-c`,`features.code_mode_host=true`,`app-server`,`--remote-control`,`--analytics-default-enabled`]:[`-c`,`features.code_mode_host=true`,`app-server`,`--analytics-default-enabled`]}";
-  const replaced = source
-    .split(REMOTE_MOBILE_APP_SERVER_ARGS_NEEDLE)
-    .join("codexLinuxRemoteMobileAppServerArgs()");
+  const helper = hasWslArgs
+    ? "function codexLinuxRemoteMobileAppServerArgs(){return process.platform===`linux`?[n.Qn(Kx()),`-c`,`features.code_mode_host=true`,`app-server`,`--remote-control`,`--analytics-default-enabled`]:[n.Qn(Kx()),`-c`,`features.code_mode_host=true`,`app-server`,`--analytics-default-enabled`]}"
+    : "function codexLinuxRemoteMobileAppServerArgs(){return process.platform===`linux`?[`-c`,`features.code_mode_host=true`,`app-server`,`--remote-control`,`--analytics-default-enabled`]:[`-c`,`features.code_mode_host=true`,`app-server`,`--analytics-default-enabled`]}";
+  const replaced = hasWslArgs
+    ? source.split(REMOTE_MOBILE_APP_SERVER_WSL_ARGS_NEEDLE).join("codexLinuxRemoteMobileAppServerArgs().join(` `)")
+    : source.split(REMOTE_MOBILE_APP_SERVER_ARGS_NEEDLE).join("codexLinuxRemoteMobileAppServerArgs()");
   // Insert after a leading "use strict" so prepending the helper does not
   // demote the directive to a plain expression and de-strict the bundle.
   const insertAt = replaced.startsWith('"use strict";')
@@ -267,6 +274,7 @@ function applyLinuxRemoteMobileAppServerRemoteControlExtractedAppPatch(extracted
     const source = fs.readFileSync(filePath, "utf8");
     if (
       !source.includes(REMOTE_MOBILE_APP_SERVER_ARGS_NEEDLE) &&
+      !source.includes(REMOTE_MOBILE_APP_SERVER_WSL_ARGS_NEEDLE) &&
       !source.includes(REMOTE_MOBILE_APP_SERVER_REMOTE_CONTROL_MARKER)
     ) {
       continue;
@@ -424,7 +432,7 @@ function applyLinuxRemoteControlFeatureSyncHostScopePatch(source) {
   }
 
   const builderCallRegex =
-    /let ([A-Za-z_$][\w$]*)=([A-Za-z_$][\w$]*)\(([A-Za-z_$][\w$]*),([A-Za-z_$][\w$]*|![01])\),([A-Za-z_$][\w$]*)=([A-Za-z_$][\w$]*)\.get\(([A-Za-z_$][\w$]*)\),/u;
+    /let ([A-Za-z_$][\w$]*)=([A-Za-z_$][\w$]*)\(([A-Za-z_$][\w$]*),([A-Za-z_$][\w$]*|![01])\),([A-Za-z_$][\w$]*)=([A-Za-z_$][\w$]*)\.get\(([A-Za-z_$][\w$]*)\),(?=[\s\S]{0,4000}\(0,[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*\)\([A-Za-z_$][\w$]*\.get\([A-Za-z_$][\w$]*\),\1\)\?\[\]:)/u;
   const builderCallMatch = source.match(builderCallRegex);
   if (builderCallMatch == null) {
     return source;
@@ -814,6 +822,12 @@ function applyLinuxRemoteControlSettingsUxPatch(source) {
 
   patched = wrapRemoteControlTabs(patched, "control-this-mac");
   patched = wrapRemoteControlTabs(patched, "access-other-devices");
+  const currentSettingsTabsPattern =
+    /un=(\[\.\.\.Re\?sn:\[\],\.\.\.Be\?W:\[\],\.\.\.cn,\.\.\.be\?ln:\[\]\])/u;
+  patched = patched.replace(
+    currentSettingsTabsPattern,
+    `un=${REMOTE_CONTROL_SETTINGS_UX_MARKER}($1)`,
+  );
 
   return patched;
 }
@@ -876,7 +890,10 @@ function applyLinuxRemoteMobileChromeBridgePatch(source) {
     return source;
   }
 
-  if (browserClientHasNativeChromeBackendPreferenceRouting(source)) {
+  if (
+    browserClientHasNativeChromeBackendPreferenceRouting(source) ||
+    source.includes("backend:ul([`chrome`,`iab`,`cdp`])")
+  ) {
     return source;
   }
 
@@ -1352,7 +1369,10 @@ function applyLinuxRemoteControlEnablementBridgePatch(source) {
 
   patched = applyLinuxRemoteControlEnableForHostParamsPatch(patched);
 
-  const markerIndex = patched.indexOf("[remote-connections/slingshot-gate-bridge]");
+  const markerIndex = [
+    patched.indexOf("[remote-connections/slingshot-gate-bridge]"),
+    patched.indexOf("[remote-connections/gate-bridge]"),
+  ].filter((index) => index >= 0).sort((a, b) => a - b)[0] ?? -1;
   const enablementIndex = patched.indexOf("set-remote-control-connections-enabled");
   if (markerIndex < 0 || enablementIndex < 0) {
     return patched;
@@ -1370,11 +1390,11 @@ function applyLinuxRemoteControlEnablementBridgePatch(source) {
 
   if (!patched.includes(REMOTE_CONTROL_ENABLEMENT_BRIDGE_MARKER)) {
     const currentBridgePattern =
-      /function ([A-Za-z_$][\w$]*)\(\)\{let ([A-Za-z_$][\w$]*)=\(0,([A-Za-z_$][\w$]*)\.c\)\(6\),\{checkGate:([A-Za-z_$][\w$]*),isLoading:([A-Za-z_$][\w$]*)\}=([A-Za-z_$][\w$]*)\(\),([A-Za-z_$][\w$]*);\2\[0\]===\4\?\7=\2\[1\]:\(\7=\4\(`1042620455`\),\2\[0\]=\4,\2\[1\]=\7\);let ([A-Za-z_$][\w$]*)=\7,([A-Za-z_$][\w$]*),([A-Za-z_$][\w$]*);return /u;
+      /function ([A-Za-z_$][\w$]*)\(\)\{let ([A-Za-z_$][\w$]*)=\(0,([A-Za-z_$][\w$]*)\.c\)\(6\),\{checkGate:([A-Za-z_$][\w$]*),isLoading:([A-Za-z_$][\w$]*)\}=([A-Za-z_$][\w$]*)\(\),([A-Za-z_$][\w$]*);\2\[0\]===\4\?\7=\2\[1\]:\(\7=\4\(`1042620455`\)(\|\|\4\(`2055603567`\))?,\2\[0\]=\4,\2\[1\]=\7\);let ([A-Za-z_$][\w$]*)=\7,([A-Za-z_$][\w$]*),([A-Za-z_$][\w$]*);return /u;
     let patchedRegion = region.replace(
       currentBridgePattern,
-      (_needle, functionName, cacheVar, compilerVar, checkGateVar, isLoadingVar, gateHookVar, gateValueVar, enabledVar, callbackVar, depsVar) =>
-        `function ${functionName}(){let ${cacheVar}=(0,${compilerVar}.c)(6),{checkGate:${checkGateVar},isLoading:${isLoadingVar}}=${gateHookVar}(),${gateValueVar};${cacheVar}[0]===${checkGateVar}?${gateValueVar}=${cacheVar}[1]:(${gateValueVar}=${checkGateVar}(\`1042620455\`),${cacheVar}[0]=${checkGateVar},${cacheVar}[1]=${gateValueVar});let ${enabledVar}=${gateValueVar}||/*${REMOTE_CONTROL_ENABLEMENT_BRIDGE_MARKER}*/typeof navigator!=\`undefined\`&&navigator.userAgent.includes(\`Linux\`),${callbackVar},${depsVar};return `,
+      (_needle, functionName, cacheVar, compilerVar, checkGateVar, isLoadingVar, gateHookVar, gateValueVar, dualGateSuffix, enabledVar, callbackVar, depsVar) =>
+        `function ${functionName}(){let ${cacheVar}=(0,${compilerVar}.c)(6),{checkGate:${checkGateVar},isLoading:${isLoadingVar}}=${gateHookVar}(),${gateValueVar};${cacheVar}[0]===${checkGateVar}?${gateValueVar}=${cacheVar}[1]:(${gateValueVar}=${checkGateVar}(\`1042620455\`)${dualGateSuffix ?? ""},${cacheVar}[0]=${checkGateVar},${cacheVar}[1]=${gateValueVar});let ${enabledVar}=${gateValueVar}||/*${REMOTE_CONTROL_ENABLEMENT_BRIDGE_MARKER}*/typeof navigator!=\`undefined\`&&navigator.userAgent.includes(\`Linux\`),${callbackVar},${depsVar};return `,
     );
     if (patchedRegion === region) {
       console.warn("WARN: Could not find remote-control enablement bridge needle - skipping Linux remote-control bridge patch");
@@ -1392,7 +1412,7 @@ function applyLinuxRemoteControlEnablementBridgePatch(source) {
     `${desktopHostRequestFn}(\`set-remote-control-connections-enabled\`,{params:{enabled:${enabledVar}}}).then(async e=>{if(${enabledVar}&&typeof navigator!=\`undefined\`&&navigator.userAgent.includes(\`Linux\`)){let t=e?.remoteControlConnections??e?.sharedObjects?.remote_control_connections??e?.connections??[],n=e?.sharedObjects?.local_remote_control_installation_id??e?.local_remote_control_installation_id??e?.localRemoteControlInstallationId??e?.installationId??e?.installation_id??null;if(t.length===0)try{let e=await ${desktopHostRequestFn}(\`refresh-remote-control-connections\`,{params:{}});t=e?.remoteControlConnections??e?.sharedObjects?.remote_control_connections??e?.connections??[],n=n??e?.sharedObjects?.local_remote_control_installation_id??e?.local_remote_control_installation_id??e?.localRemoteControlInstallationId??e?.installationId??e?.installation_id??null}catch(e){${loggerVar}.warning(\`\${${logPrefixVar}} self_auto_connect_refresh_failed\`,{safe:{},sensitive:{error:e}})}if(n==null)try{let e=await ${desktopHostRequestFn}(\`get-global-state\`,{params:{key:\`electron-local-remote-control-installation-id\`}});n=e?.value??e?.state?.value??e?.globalState?.[\`electron-local-remote-control-installation-id\`]??null}catch(e){${loggerVar}.warning(\`\${${logPrefixVar}} self_auto_connect_identity_failed\`,{safe:{},sensitive:{error:e}})}let r=t.filter(e=>typeof e?.hostId==\`string\`&&e.hostId.startsWith(\`remote-control:\`)),i=new Set(r.filter(e=>n!=null&&(e.installationId??e.installation_id)===n).map(e=>e.hostId));await Promise.all(r.map(e=>${desktopHostRequestFn}(\`set-remote-connection-auto-connect\`,{params:{hostId:e.hostId,autoConnect:i.has(e.hostId)}}).catch(t=>{${loggerVar}.warning(\`\${${logPrefixVar}} self_auto_connect_failed\`,{safe:{autoConnect:i.has(e.hostId)},sensitive:{hostId:e.hostId,error:t}})})))}}/*${REMOTE_CONTROL_SELF_AUTO_CONNECT_MARKER}*/).catch(${errorVar}=>{${loggerVar}.warning(\`\${${logPrefixVar}} sync_failed\`,{safe:{enabled:${enabledVar}},sensitive:{error:${errorVar}}})})`;
 
   const selfAutoConnectPattern =
-    /([A-Za-z_$][\w$]*)\(`set-remote-control-connections-enabled`,\{params:\{enabled:([A-Za-z_$][\w$]*)\}\}\)\.catch\(([A-Za-z_$][\w$]*)=>\{([A-Za-z_$][\w$]*)\.warning\(`\$\{([A-Za-z_$][\w$]*)\} sync_failed`,\{safe:\{(?:enabled|slingshotEnabled):\2\},sensitive:\{error:\3\}\}\)\}\)/u;
+    /([A-Za-z_$][\w$]*)\(`set-remote-control-connections-enabled`,\{params:\{enabled:([A-Za-z_$][\w$]*)\}\}\)\.catch\(([A-Za-z_$][\w$]*)=>\{([A-Za-z_$][\w$]*)\.warning\(`\$\{([A-Za-z_$][\w$]*)\} sync_failed`,\{safe:\{(?:enabled|slingshotEnabled|remoteControlConnectionsEnabled):\2\},sensitive:\{error:\3\}\}\)\}\)/u;
   const selfAutoConnectRegion = region.replace(
     selfAutoConnectPattern,
     (_needle, desktopHostRequestFn, enabledVar, errorVar, loggerVar, logPrefixVar) =>
